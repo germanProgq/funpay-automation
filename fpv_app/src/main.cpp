@@ -78,7 +78,6 @@ typedef struct AppContext {
   GtkWidget* status_label;
   GtkWidget* start_button;
   GtkWidget* stop_button;
-  GtkWidget* restart_button;
 
   GtkWidget* log_list;
   GtkWidget* chat_list;
@@ -178,7 +177,6 @@ static gboolean poll_events(gpointer user_data);
 static void handle_event(AppContext* context, const fpv_event_t* event);
 static void start_core(GtkButton* button, gpointer user_data);
 static void stop_core(GtkButton* button, gpointer user_data);
-static void restart_core(GtkButton* button, gpointer user_data);
 static GtkWidget* build_main_layout(AppContext* context);
 static void on_activate(GtkApplication* app, gpointer user_data);
 
@@ -1568,7 +1566,6 @@ static void update_status(
   context->running = running;
   gtk_widget_set_sensitive(context->start_button, !running);
   gtk_widget_set_sensitive(context->stop_button, running);
-  gtk_widget_set_sensitive(context->restart_button, running);
   gtk_widget_set_sensitive(
       context->message_send_button,
       running && context->active_chat_id != NULL);
@@ -1749,11 +1746,6 @@ static void stop_core(GtkButton* button, gpointer user_data) {
     append_log_row(context, "error", "Core stop failed.", now_ms);
     update_status(context, FPV_CORE_ERROR, "stop failed");
   }
-}
-
-static void restart_core(GtkButton* button, gpointer user_data) {
-  stop_core(button, user_data);
-  start_core(button, user_data);
 }
 
 typedef struct ChatHistoryTask {
@@ -3146,7 +3138,7 @@ static void save_settings_to_file(GtkButton* button, gpointer user_data) {
     show_message_dialog(
         GTK_WINDOW(context->window),
         "Settings",
-        "Settings saved. Restart the core to apply changes.");
+        "Settings saved. Stop and start the core to apply changes.");
   } else {
     show_message_dialog(
         GTK_WINDOW(context->window),
@@ -3917,14 +3909,12 @@ static GtkWidget* build_main_layout(AppContext* context) {
 
   context->start_button = gtk_button_new_with_label("Start");
   context->stop_button = gtk_button_new_with_label("Stop");
-  context->restart_button = gtk_button_new_with_label("Restart");
   gtk_widget_add_css_class(context->start_button, "suggested-action");
   gtk_widget_add_css_class(context->stop_button, "destructive-action");
 
   gtk_box_append(GTK_BOX(header), title);
   gtk_box_append(GTK_BOX(header), context->status_label);
   gtk_box_append(GTK_BOX(header), context->start_button);
-  gtk_box_append(GTK_BOX(header), context->restart_button);
   gtk_box_append(GTK_BOX(header), context->stop_button);
 
   GtkWidget* content_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
@@ -3993,11 +3983,6 @@ static GtkWidget* build_main_layout(AppContext* context) {
       context->stop_button,
       "clicked",
       G_CALLBACK(stop_core),
-      context);
-  g_signal_connect(
-      context->restart_button,
-      "clicked",
-      G_CALLBACK(restart_core),
       context);
 
   return main_box;
@@ -4149,6 +4134,7 @@ static void on_activate(GtkApplication* app, gpointer user_data) {
     refresh_auto_delivery_list(context);
     refresh_settings_from_file(context);
     gtk_window_present(GTK_WINDOW(context->window));
+    start_core(NULL, context);
   }
 }
 
