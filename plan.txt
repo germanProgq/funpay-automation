@@ -1,0 +1,72 @@
+FunPay Vertex C/C++ rewrite plan
+
+Goal
+- Rewrite the Python codebase in C (core) and C++ (UI/app) with feature parity.
+- Ship a desktop app with a UI built and updated from C/C++ code.
+- Must run on Windows, macOS, Linux, and other supported platforms.
+
+Current scope (from repo)
+- Core runtime: main.py, vertex.py, handlers.py
+- API layer: FunPayAPI/
+- Telegram control and notifications: tg_bot/
+- Utilities, configs, logging, storage: Utils/, configs/, storage/
+- Localization: locales/
+
+Phase 0 - discovery and spec (done)
+- [x] Inventory behaviors and data flows in vertex.py and handlers.py.
+- [x] Document config formats: configs/_main.cfg, configs/auto_delivery.cfg, configs/auto_response.cfg.
+- [x] Define supported platforms (Windows/macOS/Linux/iOS/Android) and packaging targets.
+- [x] Choose UI framework (GTK 4 in C/C++).
+- [x] Define non-goals and any feature reductions.
+
+Phase 1 - architecture and build
+- [x] Create a C core library (fpv_core) that exposes a stable C API.
+- [x] Create a C++ app (fpv_app) that links fpv_core and owns the UI.
+- [x] Use an event bus so the core can push updates to the UI safely.
+- [x] Define data models: UserProfile, Order, Chat, Lot, Message, Notification, Plugin.
+- [x] Build system: CMake + dependency manager (vcpkg or Conan).
+
+Phase 2 - core infrastructure
+- [x] Logging (file + console), with structured log levels.
+- [x] Config loader for INI (inih or custom parser).
+- [x] Storage layout compatible with current folders (logs/, storage/, configs/).
+- [x] Scheduler and worker threads (libuv or std::thread + queues).
+- [x] Plugin ABI (shared libraries) with versioned C interfaces.
+
+Phase 3 - FunPay API port
+- [x] HTTP client with session cookies, headers, and proxy support (libcurl).
+- [x] Parser for orders/messages (HTML parser like gumbo/libxml2 or JSON endpoints).
+- [x] Updater/runner that mirrors FunPayAPI/updater behavior.
+- [x] Error handling consistent with current exceptions.
+
+Phase 4 - feature port
+- [x] Auto response, auto delivery, lot raising, online status.
+- [x] Blacklist and old_users caches.
+- [x] Message templating with variable substitution.
+- [x] Localization loader for locales/ translations.
+
+Phase 5 - Telegram integration
+- Telegram Bot API client (libcurl + JSON).
+- Message sending, keyboards, file upload, notifications.
+- Telegram control panel flows from tg_bot/ re-implemented in C/C++.
+- [x] Auto-response config operations in Telegram control panel (add/edit/delete/toggle).
+- [x] Settings callbacks: category navigation, main toggles, per-chat notifications, language switch.
+
+Phase 6 - UI app (C++)
+- [x] Screens: Dashboard, Messages, Orders, Lots, Auto Delivery, Auto Response, Plugins, Settings.
+- [x] Live updates via event bus; UI refresh on core events.
+- [x] First setup wizard to generate configs.
+- [x] Import existing configs and cached data.
+
+Phase 7 - migration, tests, packaging
+- Migration tool or in-app importer for existing configs/storage.
+- Unit tests for parsing, templating, and core logic.
+- Integration tests with mocked HTTP for FunPay/Telegram.
+- Packaging: Windows installer + Linux AppImage/deb.
+
+Milestones
+- M1: fpv_core skeleton + config parsing + logging.
+- M2: FunPay API + updater + CLI runner.
+- M3: Telegram integration + auto response/delivery.
+- M4: UI alpha with live updates.
+- M5: Feature parity + migration + packaging.

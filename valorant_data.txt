@@ -1,0 +1,142 @@
+[PlayerFeedback_CheckForSurvey]                 POST   
+[PlayerFeedback_SendAnswers]                    POST   
+
+[PatchNotes_GetPatchNotes]                      GET
+
+[AggStats_Fetch]                                GET    
+
+[AccountXP_GetPlayer]                           GET    https://pd.ap.a.pvp.net/account-xp/v1/players/{user_id}
+
+[Config_FetchConfig]                            GET    https://shared.ap.a.pvp.net/v1/config/ap
+
+[Content_FetchContent]                          GET    https://shared.ap.a.pvp.net/content-service/v2/content
+
+[Contracts_Fetch]                               GET    https://pd.ap.a.pvp.net/contracts/v1/contracts/{user_id}
+[Contracts_Activate]                            POST   https://pd.ap.a.pvp.net/contracts/v1/contracts/{user_id}/special/{contract_id}
+[Contracts_UnlockItemProgressV2]                POST   https://pd.ap.a.pvp.net/contracts/v2/item-upgrades/{definition_id}/{user_id}
+[Contracts_UnlockContractProgression]           POST   https://pd.ap.a.pvp.net/contracts/v1/contracts/{user_id}/contracts/{contract_id}/unlock
+[Contracts_UnlockItemSidegrade]                 POST   https://pd.ap.a.pvp.net/contracts/v1/item-upgrades/{definition_id}/sidegrades/{sidegrade_id}/options/{option_id}/{user_id}
+[Contracts_UpgradeContract]                     POST   https://pd.eu.a.pvp.net/contracts/v1/contracts/{user_id}/contracts/{contract_id}/upgrade
+
+[ContractDefinitions_FetchActiveStory]          GET    https://pd.ap.a.pvp.net/contract-definitions/v2/definitions/story
+[ContractDefinitions_Fetch]                     GET    https://pd.ap.a.pvp.net/contract-definitions/v2/definitions
+
+[CoreGame_FetchPlayer]                          GET    https://glz-ap-1.ap.a.pvp.net/core-game/v1/players/{user_id}
+[CoreGame_FetchMatch]                           GET    https://glz-ap-1.ap.a.pvp.net/core-game/v1/matches/{match_id}
+[CoreGame_FetchMatchLoadouts]                   GET    https://glz-ap-1.ap.a.pvp.net/core-game/v1/matches/{match_id}/loadouts
+[CoreGame_FixPlayerSession]                     POST
+[CoreGame_FetchInstallStats]                    GET
+[CoreGame_DisassociatePlayer]                   POST   https://glz-ap-1.ap.a.pvp.net/core-game/v1/players/{user_id}/disassociate/{match_id}
+[CoreGame_FetchAllChatMUCToken]                 GET    https://glz-ap-1.ap.a.pvp.net/core-game/v1/matches/{match_id}/allchatmuctoken
+[CoreGame_FetchTeamChatMUCToken]                GET    https://glz-ap-1.ap.a.pvp.net/core-game/v1/matches/{match_id}/teamchatmuctoken
+[CoreGame_FetchVoiceToken]                      GET    https://glz-ap-1.ap.a.pvp.net/core-game/v1/matches/{match_id}/teamvoicetoken
+
+[DisplayNameService_FetchPlayers_BySubjects]    PUT    https://pd.ap.a.pvp.net/name-service/v2/players
+[DisplayNameService_UpdatePlayer]               POST   https://pd.ap.a.pvp.net/name-service/v2/players
+
+[ItemProgressionDefinitionsV2_Fetch]            GET    https://pd.ap.a.pvp.net/contract-definitions/v3/item-upgrades
+
+[Latency_Stats]                                 POST   https://shared.ap.a.pvp.net/latency/v1/ingestMulti
+[Latency_Stat]                                  POST   https://shared.ap.a.pvp.net/latency/v1/ingest
+
+[LoginQueue_FetchToken]                         POST   https://apse.pp.riotgames.com/login-queue/v2/login/products/valorant/regions/ap
+
+[MatchDetails_FetchMatchDetails]                GET    https://pd.ap.a.pvp.net/match-details/v1/matches/{match_id}
+
+[MatchHistory_FetchMatchHistory]                GET    https://pd.ap.a.pvp.net/match-history/v1/history/{user_id}?startIndex=0&endIndex=15&queue={null, competitive, custom, deathmatch, ggteam, newmap, onefa, snowball, spikerush, unrated}
+
+[MassRewards_ReconcilePlayer]                   POST   https://pd.ap.a.pvp.net/mass-rewards/v1/players/{user_id}/reconcile
+
+[MMR_FetchPlayer]                               GET    https://pd.ap.a.pvp.net/mmr/v1/players/{user_id}
+[MMR_AnonymizeLeaderboardPlayer]                POST   https://pd.ap.a.pvp.net/mmr/v1/leaderboards/affinity/{region}/queue/competitive/season/{season_id}/subject/{user_id}/anonymize
+[MMR_HideActRankBadge]                          POST   https://pd.ap.a.pvp.net/mmr/v1/players/{user_id}/hideactrankbadge
+[MMR_FetchLeaderboard]                          GET    https://pd.ap.a.pvp.net/mmr/v1/leaderboards/affinity/{region}/queue/competitive/season/{season_id}?startIndex=0&size=510&query={serach_user_name}
+[MMR_FetchCompetitiveUpdates]                   GET    https://pd.ap.a.pvp.net/mmr/v1/players/{user_id}/competitiveupdates?startIndex=0&endIndex=15&queue=competitive
+
+[playerLoadoutUpdate]                           GET    https://pd.ap.a.pvp.net/personalization/v2/players/{user_id}/playerloadout
+[playerLoadoutUpdate]                           PUT    https://pd.ap.a.pvp.net/personalization/v2/players/{user_id}/playerloadout
+
+[Matchmaking_FetchQueueData]                    GET    https://glz-ap-1.ap.a.pvp.net/matchmaking/v1/queues/configs 
+
+[Party_FetchPlayer]                             GET    https://glz-ap-1.ap.a.pvp.net/parties/v1/players/{user_id}?aresriot.aws-rclusterprod-ape1-1.ap-gp-hongkong-1=186&aresriot.aws-rclusterprod-ape1-1.ap-gp-hongkong-awsedge-1=122&aresriot.aws-rclusterprod-apne1-1.ap-gp-tokyo-1=147&aresriot.aws-rclusterprod-apne1-1.ap-gp-tokyo-awsedge-1=151&aresriot.aws-rclusterprod-aps1-1.ap-gp-mumbai-awsedge-1=22&aresriot.aws-rclusterprod-apse1-1.ap-gp-singapore-1=77&aresriot.aws-rclusterprod-apse1-1.ap-gp-singapore-awsedge-1=79&aresriot.aws-rclusterprod-apse2-1.ap-gp-sydney-1=258&aresriot.aws-rclusterprod-apse2-1.ap-gp-sydney-awsedge-1=170&preferredgamepods=aresriot.aws-rclusterprod-aps1-1.ap-gp-mumbai-awsedge-1
+[Party_RemovePlayer]                            DELETE https://glz-ap-1.ap.a.pvp.net/parties/v1/players/{user_id}
+[Party_ReconcilePlayer]                         POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/players/{user_id}/reconcile
+[Party_PlayerJoin]                              POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/players/{user_id}/joinparty/{party_id}
+[Party_PlayerLeave]                             POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/players/{user_id}/leaveparty/{party_id}
+[Party_SetMemberReady]                          POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/members/{user_id}/setReady
+[Party_RefreshCompetitiveTier]                  POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/members/{user_id}/refreshCompetitiveTier
+[Party_RefreshPlayerIdentity]                   POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/members/{user_id}/refreshPlayerIdentity
+[Party_RefreshPings]                            POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/members/{user_id}/refreshPings?aresriot.aws-rclusterprod-ape1-1.ap-gp-hongkong-1=186&aresriot.aws-rclusterprod-ape1-1.ap-gp-hongkong-awsedge-1=122&aresriot.aws-rclusterprod-apne1-1.ap-gp-tokyo-1=149&aresriot.aws-rclusterprod-apne1-1.ap-gp-tokyo-awsedge-1=151&aresriot.aws-rclusterprod-aps1-1.ap-gp-mumbai-awsedge-1=21&aresriot.aws-rclusterprod-apse1-1.ap-gp-singapore-1=74&aresriot.aws-rclusterprod-apse1-1.ap-gp-singapore-awsedge-1=80&aresriot.aws-rclusterprod-apse2-1.ap-gp-sydney-1=261&aresriot.aws-rclusterprod-apse2-1.ap-gp-sydney-awsedge-1=171
+[Party_FetchParty]                              GET    https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}
+[Party_LeaveFromParty]                          DELETE https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/members/{player_id}
+[Party_FetchMUCToken]                           GET    https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/muctoken
+[Party_FetchVoiceToken]                         GET    https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/voicetoken
+[Party_MakePartyIntoCustomGame]                 POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/makecustomgame
+[Party_ChangeQueue]                             POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/queue
+[Party_MakeDefault]                             POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/makedefault?queueID=competitive
+[Party_StartCustomGame]                         POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/startcustomgame
+[Party_StartSoloExperience]                     POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/players/{user_id}/startsoloexperience
+[Party_SetCustomGameSettings]                   POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/customgamesettings
+[Party_Setplayermoderatorstatus]                POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/setplayermoderatorstatus
+[Party_Setplayerbroadcasthudstatus]             POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/setplayerbroadcasthudstatus
+[Party_ChangeTeamInCustomGame]                  POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/customgamemembership/{TeamTwo, TeamOne, TeamSpectate, TeamOneCoaches, TeamTwoCoaches}
+[Party_EnterMatchmakingQueue]                   POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/matchmaking/join
+[Party_LeaveMatchmakingQueue]                   POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/matchmaking/leave
+[Party_SetAccessibility]                        POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/accessibility
+[Party_SetLookingForMore]                       POST
+[Party_SetName]                                 POST
+[Party_SetPreferredGamePods]                    POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/preferredgamepods
+[Party_InviteToParty]                           POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/invites
+[Party_InviteToPartyByDisplayName]              POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/invites/name/{player_name}/tag/{player_tag}
+[Party_DeclineInvite]                           POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/invites/decline
+[Party_RequestToJoinParty]                      POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/request
+[Party_DeclineRequest]                          POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/request/{request_id}/decline
+[Party_Balance]                                 POST
+[Party_SetCheats]                               PUT
+[Party_FetchCustomGameConfigs]                  GET    https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/customgameconfigs
+[Party_TransferOwner]                           POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/members/{player_id}/owner
+[Party_MakePremierGame]                         POST   https://glz-ap-1.ap.a.pvp.net/parties/v1/parties/{party_id}/makePremierGame
+
+[AVS_SendActivationPin]                         POST   https://apse1-red.pp.sgp.pvp.net/account-verification-player/v1/sendActivationPin
+[AVS_ConfirmActivationPin]                      POST   https://apse1-red.pp.sgp.pvp.net/account-verification-player/v1/confirmActivationPin
+
+[Premier_GetPlayer_V2]                          GET    https://pd.ap.a.pvp.net/premier/v2/players/{player_id}
+[Premier_GetEligibility]                        GET    https://pd.ap.a.pvp.net/premier/v1/player/eligibility
+[Premier_FetchPremierSeasons]                   GET    https://pd.ap.a.pvp.net/premier/v1/affinities/ap/premier-seasons
+[Premier_GetActivePremierSeason]                GET    https://pd.ap.a.pvp.net/premier/v1/affinities/ap/premier-seasons/active
+[Premier_GetPremierConferences]                 GET    https://pd.ap.a.pvp.net/premier/v1/affinities/ap/conferences
+[Premier_CreateRoster_V2]                       POST   https://pd.ap.a.pvp.net/premier/v2/rosters
+
+[Pregame_GetPlayer]                             GET    https://glz-ap-1.ap.a.pvp.net/pregame/v1/players/{user_id}
+[Pregame_FixPlayerSession]                      POST
+[Pregame_GetMatch]                              GET    https://glz-ap-1.ap.a.pvp.net/pregame/v1/matches/{match_id}
+[Pregame_GetMatchLoadouts]                      GET    https://glz-ap-1.ap.a.pvp.net/pregame/v1/matches/{match_id}/loadouts
+[Pregame_SelectCharacter]                       POST   https://glz-ap-1.ap.a.pvp.net/pregame/v1/matches/{match_id}/select/{character_id}
+[Pregame_LockCharacter]                         POST   https://glz-ap-1.ap.a.pvp.net/pregame/v1/matches/{match_id}/lock/{character_id}
+[Pregame_FetchVoiceToken]                       GET    https://glz-ap-1.ap.a.pvp.net/pregame/v1/matches/{match_id}/voicetoken
+[Pregame_FetchChatToken]                        GET    https://glz-ap-1.ap.a.pvp.net/pregame/v1/matches/{match_id}/chattoken
+[Pregame_QuitMatch]                             POST   https://glz-ap-1.ap.a.pvp.net/pregame/v1/matches/{match_id}/quit
+
+[Restrictions_PlayerReportToken]                GET    https://pd.ap.a.pvp.net/restrictions/v1/playerReportToken/{match_id}/{offender_user_id}
+[Restrictions_FetchPlayerRestrictionsV3]        GET    https://pd.ap.a.pvp.net/restrictions/v3/penalties
+[Restrictions_GetPlayerAvoidList]               GET    https://pd.ap.a.pvp.net/restrictions/v1/avoidList
+
+[Session_Connect]                               POST   https://glz-ap-1.ap.a.pvp.net/session/v2/sessions/{user_id}/connect
+[Session_Heartbeat]                             POST   https://glz-ap-1.ap.a.pvp.net/session/v1/sessions/{user_id}/heartbeat
+[Session_Disconnect]                            POST   https://glz-ap-1.ap.a.pvp.net/session/v1/sessions/{user_id}/disconnect
+[Session_Get]                                   GET    https://glz-ap-1.ap.a.pvp.net/session/v1/sessions/{user_id}
+[Session_ReConnect]                             GET    https://glz-ap-1.ap.a.pvp.net/session/v1/sessions/{user_id}/reconnect
+
+[Favorites_GetFavorites]                        GET    https://pd.ap.a.pvp.net/favorites/v1/players/{user_id}/favorites
+[Favorites_CreateFavorite]                      POST   https://pd.ap.a.pvp.net/favorites/v1/players/{user_id}/favorites
+[Favorites_ModifyFavorites]                     POST   https://pd.ap.a.pvp.net/favorites/v1/players/{user_id}/favorites-batch
+[Favorites_DeleteFavorite]                      DELETE https://pd.ap.a.pvp.net/favorites/v1/players/{user_id}/favorites/{ItemIdWithoutDashes}
+
+[Store_GetWallet]                               GET    https://pd.ap.a.pvp.net/store/v1/wallet/{user_id}
+[Store_CreateOrder]                             POST   https://pd.ap.a.pvp.net/store/v1/order/
+[Store_CreateBundleOrder]                       POST   https://pd.ap.a.pvp.net/store/v1/bundles/{bundle_id}/order
+[Store_GetOrder]                                GET    https://pd.ap.a.pvp.net/store/v1/order/{order_id}
+[Store_GetStorefrontV3]                         POST   https://pd.ap.a.pvp.net/store/v3/storefront/{user_id}
+[Store_GetOffers]                               GET    https://pd.ap.a.pvp.net/store/v1/offers/
+[Store_GetEntitlements]                         GET    https://pd.ap.a.pvp.net/store/v1/entitlements/{user_id}/{item_type_id}
+[Store_RevealNightMarketOffers]                 POST   https://pd.ap.a.pvp.net/store/v2/storefront/{user_id}/nightmarket/offers

@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<!--
+Purpose: FunPay Vertex landing page with automation-focused content and motion.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="FunPay Vertex automates FunPay orders with Telegram control, auto delivery, and real-time alerts.">
+    <title>FunPay Vertex | Automation for FunPay</title>
+    <link rel="preload" href="assets/fonts/fraunces-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="assets/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="scroll-progress" data-scroll-progress aria-hidden="true"></div>
+    <div class="page-frame" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="#top">
+        <span class="brand-mark" aria-hidden="true"></span>
+        FunPay Vertex
+      </a>
+      <nav class="site-nav" data-nav id="site-nav">
+        <a href="#modules">Modules</a>
+        <a href="#setup">Setup</a>
+        <a href="#console">Console</a>
+        <a href="#telegram">Telegram</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div class="header-cta">
+        <a class="btn ghost" href="#console">Preview console</a>
+        <a class="btn primary" href="#apply">Launch automation</a>
+      </div>
+      <button class="nav-toggle" type="button" data-nav-toggle aria-controls="site-nav" aria-expanded="false">
+        Menu
+      </button>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy" data-reveal data-stagger>
+          <p class="eyebrow">Automation for FunPay sellers</p>
+          <h1 id="hero-title">Run FunPay on autopilot with Telegram in your pocket.</h1>
+          <p class="lead">
+            FunPay Vertex handles auto delivery, auto response, lot raising, and real-time alerts,
+            all managed from a clear Telegram control panel.
+          </p>
+          <div class="hero-actions">
+            <a class="btn primary" href="#modules">Explore modules</a>
+            <a class="btn ghost" href="#setup">Setup flow</a>
+          </div>
+          <div class="hero-metrics">
+            <div>
+              <p class="metric-value">3 min</p>
+              <p class="metric-label">Average setup time</p>
+            </div>
+            <div>
+              <p class="metric-value">24/7</p>
+              <p class="metric-label">Always online status</p>
+            </div>
+            <div>
+              <p class="metric-value">Multi-chat</p>
+              <p class="metric-label">Telegram control panel</p>
+            </div>
+          </div>
+        </div>
+        <div class="hero-visual" data-reveal>
+          <div class="ledger-card parallax" data-parallax="0.06">
+            <div class="ledger-header">
+              <p>Automation snapshot</p>
+              <span class="status-pill">Live</span>
+            </div>
+            <div class="ledger-body">
+              <div>
+                <p class="ledger-label">Lot raise cycle</p>
+                <p class="ledger-value">45 min</p>
+              </div>
+              <div>
+                <p class="ledger-label">Auto response delay</p>
+                <p class="ledger-value">6 sec</p>
+              </div>
+              <div>
+                <p class="ledger-label">Telegram alerts</p>
+                <p class="ledger-value">Active</p>
+              </div>
+            </div>
+            <div class="ledger-footer">
+              <div class="meter">
+                <span class="meter-fill"></span>
+              </div>
+              <p class="fine-print">Modules stay synced across desktop and Telegram.</p>
+            </div>
+          </div>
+          <div class="signal-stack parallax" data-parallax="0.12" aria-hidden="true">
+            <div class="signal"></div>
+            <div class="signal"></div>
+            <div class="signal"></div>
+          </div>
+          <div class="seal parallax" data-parallax="0.18">
+            <span>Always online</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="logo-slider" data-reveal aria-label="Integrations">
+        <p class="eyebrow">Integrations</p>
+        <div class="logo-marquee" aria-hidden="true">
+          <div class="logo-track">
+            <div class="logo-item">
+              <span class="logo-mark">FP</span>
+              <span class="logo-text">FunPay</span>
+            </div>
+            <div class="logo-item">
+              <span class="logo-mark">TG</span>
+              <span class="logo-text">Telegram</span>
+            </div>
+            <div class="logo-item">
+              <span class="logo-mark">AD</span>
+              <span class="logo-text">Auto Delivery</span>
+            </div>
+            <div class="logo-item">
+              <span class="logo-mark">AR</span>
+              <span class="logo-text">Auto Response</span>
+            </div>
+            <div class="logo-item">
+              <span class="logo-mark">LR</span>
+              <span class="logo-text">Lot Raising</span>
+            </div>
+            <div class="logo-item">
+              <span class="logo-mark">PL</span>
+              <span class="logo-text">Plugins</span>
+            </div>
+            <div class="logo-item">
+              <span class="logo-mark">WS</span>
+              <span class="logo-text">Windows</span>
+            </div>
+            <div class="logo-item">
+              <span class="logo-mark">LX</span>
+              <span class="logo-text">Linux</span>
+            </div>
+            <div class="logo-item" aria-hidden="true">
+              <span class="logo-mark">FP</span>
+              <span class="logo-text">FunPay</span>
+            </div>
+            <div class="logo-item" aria-hidden="true">
+              <span class="logo-mark">TG</span>
+              <span class="logo-text">Telegram</span>
+            </div>
+            <div class="logo-item" aria-hidden="true">
+              <span class="logo-mark">AD</span>
+              <span class="logo-text">Auto Delivery</span>
+            </div>
+            <div class="logo-item" aria-hidden="true">
+              <span class="logo-mark">AR</span>
+              <span class="logo-text">Auto Response</span>
+            </div>
+            <div class="logo-item" aria-hidden="true">
+              <span class="logo-mark">LR</span>
+              <span class="logo-text">Lot Raising</span>
+            </div>
+            <div class="logo-item" aria-hidden="true">
+              <span class="logo-mark">PL</span>
+              <span class="logo-text">Plugins</span>
+            </div>
+            <div class="logo-item" aria-hidden="true">
+              <span class="logo-mark">WS</span>
+              <span class="logo-text">Windows</span>
+            </div>
+            <div class="logo-item" aria-hidden="true">
+              <span class="logo-mark">LX</span>
+              <span class="logo-text">Linux</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="solutions" id="modules" aria-labelledby="modules-title">
+        <div class="section-head" data-reveal>
+          <p class="eyebrow">Modules</p>
+          <h2 id="modules-title">Core automation, tuned for FunPay workflows.</h2>
+          <p>
+            Every module is built for sellers who need speed, stability, and control without
+            leaving Telegram.
+          </p>
+        </div>
+        <div class="solution-grid" data-reveal data-stagger>
+          <article class="solution-card">
+            <h3>Auto delivery</h3>
+            <p>Instantly issue digital goods, track status, and reduce manual handoff.</p>
+            <ul>
+              <li>Auto restore lots after sale</li>
+              <li>Smart stock awareness</li>
+              <li>Delivery audit trail</li>
+            </ul>
+          </article>
+          <article class="solution-card">
+            <h3>Auto response</h3>
+            <p>Reply with templated answers and variables for rapid customer support.</p>
+            <ul>
+              <li>Custom command triggers</li>
+              <li>Localized response sets</li>
+              <li>Timed response pacing</li>
+            </ul>
+          </article>
+          <article class="solution-card">
+            <h3>Lot control</h3>
+            <p>Keep listings fresh with automatic raising and persistent online status.</p>
+            <ul>
+              <li>Scheduled lot raising</li>
+              <li>Online status enforcement</li>
+              <li>Alert-first monitoring</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="steps" id="setup" aria-labelledby="steps-title">
+        <div class="section-head" data-reveal>
+          <p class="eyebrow">Setup</p>
+          <h2 id="steps-title">Deploy automation in three clean steps.</h2>
+        </div>
+        <div class="steps-track" data-reveal data-stagger>
+          <article>
+            <h3>Install</h3>
+            <p>Drop the app into your workspace and connect your FunPay credentials.</p>
+          </article>
+          <article>
+            <h3>Link Telegram</h3>
+            <p>Authorize the control bot and pick chats for alerts and responses.</p>
+          </article>
+          <article>
+            <h3>Launch modules</h3>
+            <p>Toggle automation on, adjust intervals, and watch the live status feed.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="calculator" id="console" aria-labelledby="console-title">
+        <div class="section-head" data-reveal>
+          <p class="eyebrow">Control console</p>
+          <h2 id="console-title">Tune automation and preview daily impact.</h2>
+          <p>Adjust the sliders to preview response timing and alert cadence.</p>
+        </div>
+        <div class="calculator-grid">
+          <form class="calculator-form" data-reveal>
+            <div class="field">
+              <label for="lots">Active lots</label>
+              <div class="range-row">
+                <input id="lots" name="lots" type="range" min="5" max="500" step="5" value="120" data-lots>
+                <output for="lots" data-lots-value>120 lots</output>
+              </div>
+            </div>
+            <div class="field">
+              <label for="delay">Auto response delay</label>
+              <div class="range-row">
+                <input id="delay" name="delay" type="range" min="1" max="60" step="1" value="6" data-delay>
+                <output for="delay" data-delay-value>6 sec</output>
+              </div>
+            </div>
+            <fieldset class="field">
+              <legend>Delivery mode</legend>
+              <div class="tier-grid">
+                <label class="tier-card">
+                  <input type="radio" name="mode" value="instant" checked>
+                  <span>Instant</span>
+                  <small>Fast delivery</small>
+                </label>
+                <label class="tier-card">
+                  <input type="radio" name="mode" value="queued">
+                  <span>Queued</span>
+                  <small>Balanced load</small>
+                </label>
+                <label class="tier-card">
+                  <input type="radio" name="mode" value="review">
+                  <span>Review</span>
+                  <small>Manual check</small>
+                </label>
+              </div>
+            </fieldset>
+          </form>
+          <div class="calculator-results" data-reveal aria-live="polite">
+            <div>
+              <p class="result-label">Estimated response time</p>
+              <p class="result-value" data-response>6 sec</p>
+            </div>
+            <div>
+              <p class="result-label">Lot raise cycle</p>
+              <p class="result-value" data-cycle>45 min</p>
+            </div>
+            <div>
+              <p class="result-label">Telegram alerts</p>
+              <p class="result-value" data-alerts>22 / day</p>
+            </div>
+            <div class="result-foot">
+              <p>Fine tune modules directly from Telegram.</p>
+              <a class="btn primary" href="#apply">Open in Telegram</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="insights" id="telegram" aria-labelledby="telegram-title">
+        <div class="section-head" data-reveal>
+          <p class="eyebrow">Telegram control</p>
+          <h2 id="telegram-title">Full control without leaving the chat.</h2>
+        </div>
+        <div class="insight-grid" data-reveal data-stagger>
+          <article>
+            <h3>Inline replies</h3>
+            <p>Answer buyers from Telegram and keep chat history synced.</p>
+          </article>
+          <article>
+            <h3>Module toggles</h3>
+            <p>Enable auto delivery, response templates, and lot raising with one tap.</p>
+          </article>
+          <article>
+            <h3>Multi-chat alerts</h3>
+            <p>Route order, delivery, and message notifications to the right team.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="faq" id="faq" aria-labelledby="faq-title">
+        <div class="section-head" data-reveal>
+          <p class="eyebrow">FAQ</p>
+          <h2 id="faq-title">Straight answers for daily operations.</h2>
+        </div>
+        <div class="faq-grid" data-reveal>
+          <details>
+            <summary>Does FunPay Vertex run on multiple platforms?</summary>
+            <p>Yes, it supports Windows and Linux and is designed to stay lightweight.</p>
+          </details>
+          <details>
+            <summary>Can I control modules only through Telegram?</summary>
+            <p>Yes, every module can be toggled and configured from the Telegram panel.</p>
+          </details>
+          <details>
+            <summary>What alerts are available?</summary>
+            <p>Get notifications for orders, deliveries, lot raises, and new messages.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="cta" id="apply" aria-labelledby="apply-title">
+        <div class="cta-card" data-reveal data-stagger>
+          <div>
+            <p class="eyebrow">Ready to automate</p>
+            <h2 id="apply-title">Put FunPay Vertex to work today.</h2>
+            <p>Launch the bot, connect Telegram, and keep every module in sync.</p>
+          </div>
+          <div class="cta-actions">
+            <a class="btn primary" href="#console">Open console</a>
+            <a class="btn ghost" href="#modules">See modules</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div>
+        <p class="brand">FunPay Vertex</p>
+        <p class="fine-print">Automation and alerts for FunPay sellers.</p>
+      </div>
+      <div class="footer-links">
+        <a href="#modules">Modules</a>
+        <a href="#setup">Setup</a>
+        <a href="#console">Console</a>
+        <a href="#telegram">Telegram</a>
+      </div>
+      <div>
+        <p class="fine-print">Support: support@funpayvertex.example</p>
+        <p class="fine-print">Telegram: t.me/funpayplace</p>
+      </div>
+    </footer>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>

@@ -1,0 +1,7 @@
+Resolved
+1. README.md is the app description source; no app.txt.
+2. phase0.md location is accepted.
+3. Include mobile targets (iOS/Android) alongside desktop platforms.
+4. Use Qt 6 + Qt Quick (QML) for speed and animations.
+5. Provide non-empty starter templates for auto-response and auto-delivery configs.
+6. app.txt is missing in the repo; README.md and phase0.md are the app description source.
