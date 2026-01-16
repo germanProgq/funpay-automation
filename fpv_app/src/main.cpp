@@ -54,6 +54,7 @@ typedef struct SettingsWidgets {
   GtkWidget* order_confirm_send;
   GtkWidget* order_confirm_text;
 
+  GtkWidget* review_reply_enabled_all;
   GtkWidget* review_reply_enabled[5];
   GtkWidget* review_reply_texts[5];
 
@@ -405,11 +406,22 @@ static void apply_css(GtkWidget* window) {
       ".log-message { color: #1f1f1f; }"
       ".metric { padding: 12px; background: #ffffff; border: 1px solid #e2e2e2; }"
       ".metric-value { font-weight: 600; font-size: 18px; }"
-      "listbox row:selected { background: #0b74d1; }"
-      "listbox row:selected label { color: #ffffff; }"
-      "listbox row:selected .muted { color: #e6f1ff; }"
-      ".rating-star { color: #f6b400; font-weight: 600; }"
-      ".muted { color: #666666; }";
+      ".muted { color: #666666; }"
+      "listbox row:selected,"
+      "listbox row:selected:focus,"
+      "listbox row:selected:focus-within {"
+      "  background-color: #e6e1da;"
+      "  color: #1f1f1f;"
+      "}"
+      "listbox row:selected label,"
+      "listbox row:selected:focus label,"
+      "listbox row:selected:focus-within label { color: #1f1f1f; }"
+      "listbox row:selected .muted,"
+      "listbox row:selected:focus .muted,"
+      "listbox row:selected:focus-within .muted { color: #1f1f1f; }"
+      "entry selection { background-color: #e6e1da; color: #1f1f1f; }"
+      "label selection { background-color: #e6e1da; color: #1f1f1f; }"
+      ".rating-star { color: #f6b400; font-weight: 600; }";
 
   GtkCssProvider* provider = gtk_css_provider_new();
   gtk_css_provider_load_from_string(provider, css);
@@ -1048,6 +1060,64 @@ static void refresh_plugin_list(AppContext* context) {
   g_ptr_array_free(plugins, TRUE);
 }
 
+static gboolean dir_has_marker(const gchar* dir, const gchar* marker) {
+  if (!dir || !marker || !marker[0]) {
+    return FALSE;
+  }
+  gchar* path = g_build_filename(dir, marker, NULL);
+  if (!path) {
+    return FALSE;
+  }
+  gboolean exists = g_file_test(path, G_FILE_TEST_IS_REGULAR);
+  g_free(path);
+  return exists;
+}
+
+static gchar* find_resource_dir(
+    const gchar* subdir,
+    const gchar* base_dir,
+    const gchar* marker) {
+  if (!subdir || !subdir[0]) {
+    return NULL;
+  }
+
+  gchar* cwd = g_get_current_dir();
+  if (cwd) {
+    gchar* path = g_build_filename(cwd, subdir, NULL);
+    if (path &&
+        g_file_test(path, G_FILE_TEST_IS_DIR) &&
+        (!marker || dir_has_marker(path, marker))) {
+      g_free(cwd);
+      return path;
+    }
+    g_free(path);
+    g_free(cwd);
+  }
+
+  if (base_dir && base_dir[0]) {
+    gchar* path = g_build_filename(base_dir, subdir, NULL);
+    if (path &&
+        g_file_test(path, G_FILE_TEST_IS_DIR) &&
+        (!marker || dir_has_marker(path, marker))) {
+      return path;
+    }
+    g_free(path);
+  }
+
+  const gchar* const* system_dirs = g_get_system_data_dirs();
+  for (size_t i = 0; system_dirs && system_dirs[i]; i++) {
+    gchar* path = g_build_filename(system_dirs[i], "funpay_vertex", subdir, NULL);
+    if (path &&
+        g_file_test(path, G_FILE_TEST_IS_DIR) &&
+        (!marker || dir_has_marker(path, marker))) {
+      return path;
+    }
+    g_free(path);
+  }
+
+  return NULL;
+}
+
 static gboolean has_config_files(const gchar* config_dir) {
   if (!config_dir || !config_dir[0]) {
     return FALSE;
@@ -1178,12 +1248,9 @@ static void sync_main_config(const gchar* config_dir) {
   };
   const size_t file_count = sizeof(filenames) / sizeof(filenames[0]);
 
-  gchar* cwd = g_get_current_dir();
-  if (!cwd) {
-    return;
-  }
-  gchar* template_dir = g_build_filename(cwd, "configs", NULL);
-  g_free(cwd);
+  gchar* base_dir = g_path_get_dirname(config_dir);
+  gchar* template_dir = find_resource_dir("configs", base_dir, "_main.cfg");
+  g_free(base_dir);
   if (!template_dir || !g_file_test(template_dir, G_FILE_TEST_IS_DIR)) {
     g_free(template_dir);
     return;
@@ -2239,7 +2306,7 @@ static void show_auto_response_dialog(
     g_free(path);
   }
 
-  g_signal_connect(
+  g_signal_connect_swapped(
       cancel_button,
       "clicked",
       G_CALLBACK(gtk_window_close),
@@ -2576,7 +2643,7 @@ static void show_auto_delivery_dialog(
     g_free(path);
   }
 
-  g_signal_connect(
+  g_signal_connect_swapped(
       cancel_button,
       "clicked",
       G_CALLBACK(gtk_window_close),
@@ -2803,14 +2870,27 @@ static void refresh_settings_from_file(AppContext* context) {
   gtk_editable_set_text(GTK_EDITABLE(context->settings.order_confirm_text), safe);
   g_free(safe);
 
+  const char* review_reply_master = fpv_ini_get(ini, "ReviewReply", "enabled");
+  gboolean review_reply_master_active =
+      parse_ini_bool(review_reply_master, FALSE);
+  gboolean review_reply_master_present =
+      review_reply_master && review_reply_master[0];
+  gboolean review_reply_any_enabled = FALSE;
+
   for (size_t i = 0; i < 5; i++) {
     char key_enabled[32];
     char key_text[32];
     snprintf(key_enabled, sizeof(key_enabled), "star%zuReply", i + 1);
     snprintf(key_text, sizeof(key_text), "star%zuReplyText", i + 1);
+    gboolean star_enabled = parse_ini_bool(
+        fpv_ini_get(ini, "ReviewReply", key_enabled),
+        FALSE);
     gtk_switch_set_active(
         GTK_SWITCH(context->settings.review_reply_enabled[i]),
-        parse_ini_bool(fpv_ini_get(ini, "ReviewReply", key_enabled), FALSE));
+        star_enabled);
+    if (star_enabled) {
+      review_reply_any_enabled = TRUE;
+    }
     value = fpv_ini_get(ini, "ReviewReply", key_text);
     safe = sanitize_utf8(value ? value : "");
     gtk_editable_set_text(
@@ -2818,6 +2898,12 @@ static void refresh_settings_from_file(AppContext* context) {
         safe);
     g_free(safe);
   }
+  if (!review_reply_master_present) {
+    review_reply_master_active = review_reply_any_enabled;
+  }
+  gtk_switch_set_active(
+      GTK_SWITCH(context->settings.review_reply_enabled_all),
+      review_reply_master_active);
 
   gtk_switch_set_active(
       GTK_SWITCH(context->settings.proxy_enable),
@@ -2994,6 +3080,9 @@ static void save_settings_to_file(GtkButton* button, gpointer user_data) {
               gtk_editable_get_text(GTK_EDITABLE(
                   context->settings.order_confirm_text)));
 
+  fpv_ini_set(ini, "ReviewReply", "enabled",
+              gtk_switch_get_active(
+                  GTK_SWITCH(context->settings.review_reply_enabled_all)) ? "1" : "0");
   for (size_t i = 0; i < 5; i++) {
     char key_enabled[32];
     char key_text[32];
@@ -3527,6 +3616,7 @@ static GtkWidget* build_settings_page(AppContext* context) {
       GTK_SCROLLED_WINDOW(scroller),
       GTK_POLICY_AUTOMATIC,
       GTK_POLICY_AUTOMATIC);
+  install_slow_scrolling(scroller);
 
   GtkWidget* content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 16);
   gtk_widget_set_margin_start(content, 12);
@@ -3680,20 +3770,52 @@ static GtkWidget* build_settings_page(AppContext* context) {
   add_setting_row(order_grid, 1, "Reply text", context->settings.order_confirm_text);
 
   GtkWidget* review_frame = gtk_frame_new("Review Reply");
+  GtkWidget* review_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
   GtkWidget* review_grid = gtk_grid_new();
   gtk_grid_set_row_spacing(GTK_GRID(review_grid), 6);
   gtk_grid_set_column_spacing(GTK_GRID(review_grid), 12);
   set_settings_grid_margins(review_grid);
-  gtk_frame_set_child(GTK_FRAME(review_frame), review_grid);
+  gtk_widget_set_margin_bottom(review_grid, 0);
+
+  GtkWidget* review_details_grid = gtk_grid_new();
+  gtk_grid_set_row_spacing(GTK_GRID(review_details_grid), 6);
+  gtk_grid_set_column_spacing(GTK_GRID(review_details_grid), 12);
+  set_settings_grid_margins(review_details_grid);
+  gtk_widget_set_margin_top(review_details_grid, 0);
+
+  GtkWidget* review_revealer = gtk_revealer_new();
+  gtk_revealer_set_transition_type(
+      GTK_REVEALER(review_revealer),
+      GTK_REVEALER_TRANSITION_TYPE_SLIDE_DOWN);
+  gtk_revealer_set_transition_duration(
+      GTK_REVEALER(review_revealer),
+      200);
+  gtk_revealer_set_reveal_child(GTK_REVEALER(review_revealer), FALSE);
+  gtk_revealer_set_child(
+      GTK_REVEALER(review_revealer),
+      review_details_grid);
+
+  gtk_box_append(GTK_BOX(review_box), review_grid);
+  gtk_box_append(GTK_BOX(review_box), review_revealer);
+  gtk_frame_set_child(GTK_FRAME(review_frame), review_box);
+
+  context->settings.review_reply_enabled_all = gtk_switch_new();
+  add_setting_row(review_grid, 0, "Review replies enabled",
+                  context->settings.review_reply_enabled_all);
+  g_signal_connect(
+      context->settings.review_reply_enabled_all,
+      "notify::active",
+      G_CALLBACK(on_toggle_revealer),
+      review_revealer);
 
   for (size_t i = 0; i < 5; i++) {
     context->settings.review_reply_enabled[i] = gtk_switch_new();
     context->settings.review_reply_texts[i] = gtk_entry_new();
     GtkWidget* label = build_star_label_widget(i + 1, NULL);
-    add_setting_row_label(review_grid, (int)i * 2, label,
+    add_setting_row_label(review_details_grid, (int)i * 2, label,
                           context->settings.review_reply_enabled[i]);
     label = build_star_label_widget(i + 1, "Reply text");
-    add_setting_row_label(review_grid, (int)i * 2 + 1, label,
+    add_setting_row_label(review_details_grid, (int)i * 2 + 1, label,
                           context->settings.review_reply_texts[i]);
   }
 
@@ -3942,24 +4064,7 @@ static void on_activate(GtkApplication* app, gpointer user_data) {
   context->config_dir = g_build_filename(context->base_dir, "configs", NULL);
   context->logs_dir = g_build_filename(context->base_dir, "logs", NULL);
   context->plugins_dir = g_build_filename(context->base_dir, "plugins", NULL);
-
-  gchar* cwd = g_get_current_dir();
-  gchar* cwd_locales = g_build_filename(cwd, "locales", NULL);
-  if (g_file_test(cwd_locales, G_FILE_TEST_IS_DIR)) {
-    context->locales_dir = cwd_locales;
-  } else {
-    g_free(cwd_locales);
-  }
-  g_free(cwd);
-
-  if (!context->locales_dir) {
-    gchar* data_locales = g_build_filename(context->base_dir, "locales", NULL);
-    if (g_file_test(data_locales, G_FILE_TEST_IS_DIR)) {
-      context->locales_dir = data_locales;
-    } else {
-      g_free(data_locales);
-    }
-  }
+  context->locales_dir = find_resource_dir("locales", context->base_dir, "eng.loc");
 
   g_mkdir_with_parents(context->data_dir, 0755);
   g_mkdir_with_parents(context->config_dir, 0755);

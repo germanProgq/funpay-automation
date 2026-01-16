@@ -60,4 +60,36 @@ fpv_result_t fpv_funpay_http_request_multipart(
 
 void fpv_funpay_http_response_clear(fpv_funpay_http_response_t* response);
 
+#if defined(FPV_ENABLE_TEST_HOOKS)
+typedef fpv_result_t (*fpv_funpay_http_mock_fn)(
+    fpv_funpay_http_client_t* client,
+    const char* method,
+    const char* url,
+    const char* cookie,
+    const fpv_funpay_http_header_t* headers,
+    size_t header_count,
+    const char* body,
+    fpv_funpay_http_response_t* response,
+    fpv_funpay_error_t* error,
+    void* user_data);
+
+typedef fpv_result_t (*fpv_funpay_http_multipart_mock_fn)(
+    fpv_funpay_http_client_t* client,
+    const char* url,
+    const char* cookie,
+    const fpv_funpay_http_header_t* headers,
+    size_t header_count,
+    const fpv_funpay_http_form_part_t* parts,
+    size_t part_count,
+    fpv_funpay_http_response_t* response,
+    fpv_funpay_error_t* error,
+    void* user_data);
+
+void fpv_funpay_http_set_mock(
+    fpv_funpay_http_mock_fn request,
+    fpv_funpay_http_multipart_mock_fn multipart,
+    void* user_data);
+void fpv_funpay_http_clear_mock(void);
+#endif
+
 #endif

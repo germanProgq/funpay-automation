@@ -154,6 +154,7 @@ fpv_result_t fpv_settings_load(const char* path, fpv_settings_t* settings) {
   const char* greetings_text = NULL;
   const char* order_confirm_send = NULL;
   const char* order_confirm_text = NULL;
+  const char* review_reply_master = NULL;
   const char* review_reply_enabled[5] = {0};
   const char* review_reply_text[5] = {0};
 
@@ -213,6 +214,7 @@ fpv_result_t fpv_settings_load(const char* path, fpv_settings_t* settings) {
   order_confirm_send = fpv_ini_get(ini, "OrderConfirm", "sendReply");
   order_confirm_text = fpv_ini_get(ini, "OrderConfirm", "replyText");
 
+  review_reply_master = fpv_ini_get(ini, "ReviewReply", "enabled");
   for (size_t i = 0; i < 5; i++) {
     char key_enabled[32];
     char key_text[32];
@@ -375,11 +377,22 @@ fpv_result_t fpv_settings_load(const char* path, fpv_settings_t* settings) {
     }
   }
 
+  bool review_reply_master_present =
+      review_reply_master && review_reply_master[0];
+  bool review_reply_master_value = false;
+  bool review_reply_any_enabled = false;
+  if (review_reply_master_present) {
+    fpv_parse_bool(review_reply_master, &review_reply_master_value);
+  }
+
   for (size_t i = 0; i < 5; i++) {
+    bool star_enabled = false;
     if (review_reply_enabled[i] && review_reply_enabled[i][0]) {
-      fpv_parse_bool(
-          review_reply_enabled[i],
-          &settings->review_reply_enabled[i]);
+      fpv_parse_bool(review_reply_enabled[i], &star_enabled);
+    }
+    settings->review_reply_enabled[i] = star_enabled;
+    if (star_enabled) {
+      review_reply_any_enabled = true;
     }
     if (review_reply_text[i] && review_reply_text[i][0]) {
       settings->review_reply_texts[i] = fpv_strdup(review_reply_text[i]);
@@ -389,6 +402,11 @@ fpv_result_t fpv_settings_load(const char* path, fpv_settings_t* settings) {
         return FPV_ERR_OUT_OF_MEMORY;
       }
     }
+  }
+  if (review_reply_master_present) {
+    settings->review_reply_enabled_all = review_reply_master_value;
+  } else {
+    settings->review_reply_enabled_all = review_reply_any_enabled;
   }
 
   if (telegram_enabled && telegram_enabled[0]) {

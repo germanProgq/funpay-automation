@@ -1,11 +1,18 @@
 #include <ctype.h>
 #include <curl/curl.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <sys/types.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 #define VALORANT_USERNAME "martinyxy10"
 #define VALORANT_PASSWORD "k&-8qvyi"
@@ -16,13 +23,27 @@
 #define VALORANT_DATA_PATH "valorant_data.txt"
 #define VALORANT_CLIENT_VERSION "release-08.08-shipping-2-000000"
 #define VALORANT_CLIENT_PLATFORM "eyJwbGF0Zm9ybVR5cGUiOiAiUEMiLCAicGxhdGZvcm1PUyI6ICJXaW5kb3dzIiwgInBsYXRmb3JtT1NWZXJzaW9uIjogIjEwLjAuMTkwNDMuMS4yNTYuNjRiaXQiLCAicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24ifQ=="
-#define VALORANT_USER_AGENT "python-requests/2.28.1"
+#define VALORANT_USER_AGENT \
+  "RiotClient/57.0.0.4639025.4624825 rso-auth (Windows;10;19044)"
+#define VALORANT_QR_CONFIG_AGENT \
+  "RiotGamesApi/24.9.1.4445 client-config (Windows;10;;Professional, x64) riot_client/0"
+#define VALORANT_QR_AUTH_AGENT \
+  "RiotGamesApi/24.9.1.4445 rso-auth (Windows;10;;Professional, x64) riot_client/0"
+#define VALORANT_QR_LOGIN_AGENT \
+  "RiotGamesApi/24.9.1.4445 rso-authenticator (Windows;10;;Professional, x64) riot_client/0"
+#define VALORANT_QR_TOKEN_AGENT \
+  "RiotGamesApi/24.10.1.4471 rso-auth (Windows;10;;Professional, x64) riot_client/0"
+#define VALORANT_QR_REDIRECT_URI "http://localhost/redirect"
+#define VALORANT_QR_SCOPE "openid link ban lol_region account"
+#define VALORANT_QR_DEFAULT_COUNTRY "en-US"
 
 typedef struct http_response {
   char* data;
   size_t size;
   long status;
 } http_response_t;
+
+static char* strndup_string(const char* value, size_t len);
 
 static void response_reset(http_response_t* response) {
   if (!response) {
@@ -84,6 +105,96 @@ static bool http_request(
 
   curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &out->status);
   return true;
+}
+
+typedef struct http_location_capture {
+  char* location;
+} http_location_capture_t;
+
+static bool header_starts_with_ignore_case(
+    const char* buffer,
+    size_t len,
+    const char* prefix) {
+  size_t prefix_len = strlen(prefix);
+  if (len < prefix_len) {
+    return false;
+  }
+  for (size_t i = 0; i < prefix_len; i++) {
+    if (tolower((unsigned char)buffer[i]) != tolower((unsigned char)prefix[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static size_t http_location_header_cb(
+    char* buffer,
+    size_t size,
+    size_t nitems,
+    void* userdata) {
+  size_t total = size * nitems;
+  http_location_capture_t* capture = (http_location_capture_t*)userdata;
+  if (!capture || total == 0) {
+    return total;
+  }
+
+  const char* prefix = "Location:";
+  if (!header_starts_with_ignore_case(buffer, total, prefix)) {
+    return total;
+  }
+
+  const char* start = buffer + strlen(prefix);
+  const char* end = buffer + total;
+  while (start < end && isspace((unsigned char)*start)) {
+    start++;
+  }
+  while (end > start && (end[-1] == '\r' || end[-1] == '\n')) {
+    end--;
+  }
+  if (end <= start) {
+    return total;
+  }
+
+  char* location = strndup_string(start, (size_t)(end - start));
+  if (location) {
+    free(capture->location);
+    capture->location = location;
+  }
+  return total;
+}
+
+static bool http_request_with_location(
+    CURL* curl,
+    const char* method,
+    const char* url,
+    struct curl_slist* headers,
+    const char* body,
+    http_response_t* out,
+    char** out_location) {
+  if (out_location) {
+    *out_location = NULL;
+  }
+  if (!curl || !method || !url || !out) {
+    return false;
+  }
+
+  http_location_capture_t capture = {0};
+  curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, http_location_header_cb);
+  curl_easy_setopt(curl, CURLOPT_HEADERDATA, &capture);
+  curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
+
+  bool ok = http_request(curl, method, url, headers, body, out);
+
+  curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, NULL);
+  curl_easy_setopt(curl, CURLOPT_HEADERDATA, NULL);
+
+  if (out_location) {
+    *out_location = capture.location;
+  } else {
+    free(capture.location);
+  }
+
+  return ok;
 }
 
 static char* dup_string(const char* value) {
@@ -256,6 +367,294 @@ static char* extract_json_string(const char* json, const char* key) {
 
   free(out);
   return NULL;
+}
+
+static char* extract_json_value(const char* json, const char* key) {
+  if (!json || !key) {
+    return NULL;
+  }
+
+  size_t key_len = strlen(key);
+  size_t pattern_len = key_len + 2;
+  char* pattern = (char*)malloc(pattern_len + 1);
+  if (!pattern) {
+    return NULL;
+  }
+
+  pattern[0] = '"';
+  memcpy(pattern + 1, key, key_len);
+  pattern[pattern_len - 1] = '"';
+  pattern[pattern_len] = '\0';
+
+  const char* match = strstr(json, pattern);
+  free(pattern);
+  if (!match) {
+    return NULL;
+  }
+
+  const char* cursor = match + pattern_len;
+  while (*cursor && *cursor != ':') {
+    cursor++;
+  }
+  if (*cursor != ':') {
+    return NULL;
+  }
+  cursor++;
+  while (*cursor && isspace((unsigned char)*cursor)) {
+    cursor++;
+  }
+
+  if (*cursor == '"') {
+    cursor++;
+    size_t capacity = strlen(cursor) + 1;
+    char* out = (char*)malloc(capacity);
+    if (!out) {
+      return NULL;
+    }
+
+    size_t idx = 0;
+    while (*cursor) {
+      if (*cursor == '\\' && cursor[1]) {
+        cursor++;
+        out[idx++] = *cursor++;
+        continue;
+      }
+      if (*cursor == '"') {
+        out[idx] = '\0';
+        return out;
+      }
+      out[idx++] = *cursor++;
+    }
+
+    free(out);
+    return NULL;
+  }
+
+  const char* start = cursor;
+  while (*cursor && *cursor != ',' && *cursor != '}' && *cursor != '\n' &&
+         *cursor != '\r') {
+    cursor++;
+  }
+  const char* end = cursor;
+  while (end > start && isspace((unsigned char)end[-1])) {
+    end--;
+  }
+  if (end == start) {
+    return NULL;
+  }
+  return strndup_string(start, (size_t)(end - start));
+}
+
+static bool strings_equal_ignore_case(const char* a, const char* b) {
+  if (!a || !b) {
+    return false;
+  }
+  while (*a && *b) {
+    if (tolower((unsigned char)*a) != tolower((unsigned char)*b)) {
+      return false;
+    }
+    a++;
+    b++;
+  }
+  return *a == '\0' && *b == '\0';
+}
+
+static bool env_is_truthy(const char* name) {
+  const char* value = getenv(name);
+  if (!value || !value[0]) {
+    return false;
+  }
+  if (strcmp(value, "1") == 0) {
+    return true;
+  }
+  if (strings_equal_ignore_case(value, "true") ||
+      strings_equal_ignore_case(value, "yes") ||
+      strings_equal_ignore_case(value, "on")) {
+    return true;
+  }
+  return false;
+}
+
+static int env_int(const char* name, int default_value) {
+  const char* value = getenv(name);
+  if (!value || !value[0]) {
+    return default_value;
+  }
+  char* end = NULL;
+  long parsed = strtol(value, &end, 10);
+  if (end == value || parsed <= 0 || parsed > INT_MAX) {
+    return default_value;
+  }
+  return (int)parsed;
+}
+
+static const char* get_country_code(void) {
+  const char* value = getenv("VALORANT_COUNTRY_CODE");
+  if (!value || !value[0]) {
+    value = getenv("VALORANT_COUNTRY");
+  }
+  if (!value || !value[0]) {
+    value = getenv("VALORANT_LANGUAGE");
+  }
+  if (!value || !value[0]) {
+    value = VALORANT_QR_DEFAULT_COUNTRY;
+  }
+  return value;
+}
+
+typedef struct language_region_map {
+  const char* language;
+  const char* region;
+} language_region_map_t;
+
+static const language_region_map_t k_language_regions[] = {
+    {"en-US", "NA"},
+    {"ko-KR", "KR"},
+    {"ja-JP", "JP"},
+    {"zh-CN", "CN"},
+    {"zh-TW", "TW"},
+    {"es-ES", "EUW"},
+    {"fr-FR", "EUW"},
+    {"de-DE", "EUW"},
+    {"ru-RU", "RU"},
+    {"ar-SA", "TR"},
+    {"th-TH", "TH"},
+    {"vi-VN", "VN"},
+    {"id-ID", "ID"},
+    {"ms-MY", "MY"},
+    {"pl-PL", "EUN"},
+    {"tr-TR", "TR"},
+    {"ro-RO", "EUN"},
+    {"hu-HU", "EUN"},
+    {"el-GR", "EUN"},
+    {"cs-CZ", "EUN"},
+    {"pt-BR", "BR"},
+    {"it-IT", "EUW"},
+};
+
+static const size_t k_language_region_count =
+    sizeof(k_language_regions) / sizeof(k_language_regions[0]);
+
+static const char* region_for_language(const char* language) {
+  const char* override = getenv("VALORANT_QR_REGION");
+  if (override && override[0]) {
+    return override;
+  }
+  if (!language || !language[0]) {
+    return "NA";
+  }
+  for (size_t i = 0; i < k_language_region_count; i++) {
+    if (strings_equal_ignore_case(language, k_language_regions[i].language)) {
+      return k_language_regions[i].region;
+    }
+  }
+  return "NA";
+}
+
+static char* normalize_language_code(const char* language) {
+  if (!language) {
+    return NULL;
+  }
+  char* out = dup_string(language);
+  if (!out) {
+    return NULL;
+  }
+  for (char* p = out; *p; p++) {
+    if (*p == '-') {
+      *p = '_';
+    }
+  }
+  return out;
+}
+
+static void seed_prng_once(void) {
+  static bool seeded = false;
+  if (!seeded) {
+    unsigned int seed = (unsigned int)time(NULL);
+#ifdef _WIN32
+    seed ^= (unsigned int)GetCurrentProcessId();
+#else
+    seed ^= (unsigned int)getpid();
+#endif
+    srand(seed);
+    seeded = true;
+  }
+}
+
+static bool random_bytes(unsigned char* out, size_t len) {
+  if (!out || len == 0) {
+    return false;
+  }
+#ifdef _WIN32
+  seed_prng_once();
+  for (size_t i = 0; i < len; i++) {
+    out[i] = (unsigned char)(rand() & 0xff);
+  }
+  return true;
+#else
+  FILE* file = fopen("/dev/urandom", "rb");
+  if (file) {
+    size_t read_bytes = fread(out, 1, len, file);
+    fclose(file);
+    if (read_bytes == len) {
+      return true;
+    }
+  }
+  seed_prng_once();
+  for (size_t i = 0; i < len; i++) {
+    out[i] = (unsigned char)(rand() & 0xff);
+  }
+  return true;
+#endif
+}
+
+static bool random_hex_string(char* out, size_t hex_len) {
+  if (!out || hex_len == 0 || (hex_len % 2) != 0) {
+    return false;
+  }
+  size_t byte_len = hex_len / 2;
+  unsigned char* bytes = (unsigned char*)malloc(byte_len);
+  if (!bytes) {
+    return false;
+  }
+  if (!random_bytes(bytes, byte_len)) {
+    free(bytes);
+    return false;
+  }
+  static const char* hex = "0123456789abcdef";
+  for (size_t i = 0; i < byte_len; i++) {
+    out[i * 2] = hex[(bytes[i] >> 4) & 0x0f];
+    out[i * 2 + 1] = hex[bytes[i] & 0x0f];
+  }
+  out[hex_len] = '\0';
+  free(bytes);
+  return true;
+}
+
+static bool uuid_v4_string(char out[37]) {
+  if (!out) {
+    return false;
+  }
+  unsigned char bytes[16];
+  if (!random_bytes(bytes, sizeof(bytes))) {
+    return false;
+  }
+  bytes[6] = (unsigned char)((bytes[6] & 0x0f) | 0x40);
+  bytes[8] = (unsigned char)((bytes[8] & 0x3f) | 0x80);
+  snprintf(out, 37,
+           "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+           bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5],
+           bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11],
+           bytes[12], bytes[13], bytes[14], bytes[15]);
+  return true;
+}
+
+static void sleep_ms(unsigned int ms) {
+#ifdef _WIN32
+  Sleep(ms);
+#else
+  usleep(ms * 1000);
+#endif
 }
 
 static void trim_newline(char* value) {
@@ -777,6 +1176,13 @@ static bool status_unauthorized(const http_response_t* response) {
   return response->status == 401 || response->status == 403;
 }
 
+static bool status_redirect(const http_response_t* response) {
+  if (!response) {
+    return false;
+  }
+  return response->status >= 300 && response->status < 400;
+}
+
 typedef struct riot_auth_attempt {
   const char* label;
   const char* client_id;
@@ -801,6 +1207,19 @@ static const riot_auth_attempt_t k_auth_attempts[] = {
 
 static const size_t k_auth_attempt_count =
     sizeof(k_auth_attempts) / sizeof(k_auth_attempts[0]);
+
+typedef struct riot_auth_host {
+  const char* label;
+  const char* url;
+} riot_auth_host_t;
+
+static const riot_auth_host_t k_auth_hosts[] = {
+    {"auth", "https://auth.riotgames.com/api/v1/authorization"},
+    {"authenticate", "https://authenticate.riotgames.com/api/v1/authorization"},
+};
+
+static const size_t k_auth_host_count =
+    sizeof(k_auth_hosts) / sizeof(k_auth_hosts[0]);
 
 static bool response_is_rate_limited(const char* body) {
   if (!body) {
@@ -858,9 +1277,24 @@ static char* riot_login(
   char* auth_type = NULL;
   char* uri = NULL;
   char* access_token = NULL;
+  char* origin_header = NULL;
+  char* referer_header = NULL;
+  const char* origin = "https://auth.riotgames.com";
+  if (strstr(auth_url, "authenticate.riotgames.com")) {
+    origin = "https://authenticate.riotgames.com";
+  }
 
   headers = curl_slist_append(headers, "Content-Type: application/json");
   headers = curl_slist_append(headers, "Accept: application/json");
+  headers = curl_slist_append(headers, "Accept-Language: en-US,en;q=0.9");
+  origin_header = format_header("Origin", origin);
+  referer_header = format_header("Referer", origin);
+  if (origin_header) {
+    headers = curl_slist_append(headers, origin_header);
+  }
+  if (referer_header) {
+    headers = curl_slist_append(headers, referer_header);
+  }
 
   if (!http_request(curl, "POST", auth_url, headers, auth_body, &response) ||
       !status_ok(&response)) {
@@ -984,6 +1418,8 @@ cleanup:
   free(login_body);
   free(auth_type);
   free(uri);
+  free(origin_header);
+  free(referer_header);
   response_reset(&response);
   curl_slist_free_all(headers);
   return access_token;
@@ -1004,70 +1440,112 @@ static char* valorant_login_with_creds(
     return NULL;
   }
 
-  const char* auth_url = "https://auth.riotgames.com/api/v1/authorization";
   char* access_token = NULL;
   char* login_error = NULL;
+  char* auth_failure_error = NULL;
 
-  for (size_t i = 0; i < k_auth_attempt_count && !access_token; i++) {
-    free(login_error);
-    login_error = NULL;
-    access_token = riot_login(
-        curl,
-        auth_url,
-        k_auth_attempts[i].client_id,
-        k_auth_attempts[i].redirect_uri,
-        k_auth_attempts[i].scope,
-        username,
-        password,
-        &login_error);
-    if (!access_token && login_error) {
-      if (strcmp(login_error, "rate_limited") == 0) {
-        fprintf(stderr,
-                "Login attempt (%s) failed: rate limited by Cloudflare.\n",
-                k_auth_attempts[i].label);
-        break;
-      }
+  for (size_t host_idx = 0;
+       host_idx < k_auth_host_count && !access_token;
+       host_idx++) {
+    const char* auth_url = k_auth_hosts[host_idx].url;
+    bool saw_auth_failure = false;
 
-      char* error_code = extract_json_string(login_error, "error");
-      char* error_desc = extract_json_string(login_error, "error_description");
-      char* country = extract_json_string(login_error, "country");
-      if (error_code || error_desc || country) {
-        fprintf(stderr, "Login attempt (%s) failed:", k_auth_attempts[i].label);
+    for (size_t i = 0; i < k_auth_attempt_count && !access_token; i++) {
+      free(login_error);
+      login_error = NULL;
+      access_token = riot_login(
+          curl,
+          auth_url,
+          k_auth_attempts[i].client_id,
+          k_auth_attempts[i].redirect_uri,
+          k_auth_attempts[i].scope,
+          username,
+          password,
+          &login_error);
+      if (!access_token && login_error) {
+        if (strcmp(login_error, "rate_limited") == 0) {
+          fprintf(stderr,
+                  "Login attempt (%s/%s) failed: rate limited by Cloudflare.\n",
+                  k_auth_hosts[host_idx].label,
+                  k_auth_attempts[i].label);
+          break;
+        }
+
+        char* error_code = extract_json_string(login_error, "error");
+        char* error_desc = extract_json_string(login_error, "error_description");
+        char* country = extract_json_string(login_error, "country");
+        char* captcha = extract_json_string(login_error, "captcha");
+        bool auth_failure = false;
         if (error_code) {
-          fprintf(stderr, " error=%s", error_code);
+          auth_failure = strcmp(error_code, "auth_failure") == 0;
+        } else {
+          auth_failure = login_error_is_auth_failure(login_error);
         }
-        if (error_desc) {
-          fprintf(stderr, " desc=%s", error_desc);
+        if (auth_failure) {
+          saw_auth_failure = true;
+          if (!auth_failure_error) {
+            auth_failure_error = dup_string(login_error);
+          }
         }
-        if (country) {
-          fprintf(stderr, " country=%s", country);
+        if (error_code || error_desc || country || captcha) {
+          fprintf(stderr, "Login attempt (%s/%s) failed:",
+                  k_auth_hosts[host_idx].label,
+                  k_auth_attempts[i].label);
+          if (error_code) {
+            fprintf(stderr, " error=%s", error_code);
+          }
+          if (error_desc) {
+            fprintf(stderr, " desc=%s", error_desc);
+          }
+          if (country) {
+            fprintf(stderr, " country=%s", country);
+          }
+          if (captcha) {
+            fprintf(stderr, " captcha=%s", captcha);
+          }
+          fprintf(stderr, "\n");
+        } else {
+          fprintf(stderr, "Login attempt (%s/%s) failed: %s\n",
+                  k_auth_hosts[host_idx].label,
+                  k_auth_attempts[i].label,
+                  login_error);
         }
-        fprintf(stderr, "\n");
-      } else {
-        fprintf(stderr, "Login attempt (%s) failed: %s\n",
-                k_auth_attempts[i].label, login_error);
-      }
 
-      bool auth_failure = login_error_is_auth_failure(login_error);
-      free(error_code);
-      free(error_desc);
-      free(country);
-      if (auth_failure) {
-        break;
+        const char* debug_auth = getenv("VALORANT_DEBUG_AUTH");
+        if (debug_auth && debug_auth[0]) {
+          fprintf(stderr, "Auth response: %s\n", login_error);
+        }
+        free(error_code);
+        free(error_desc);
+        free(country);
+        free(captcha);
       }
+    }
+    if (saw_auth_failure) {
+      break;
     }
   }
 
   if (!access_token) {
     if (out_error) {
-      *out_error = login_error;
+      if (auth_failure_error) {
+        *out_error = auth_failure_error;
+        auth_failure_error = NULL;
+        free(login_error);
+        login_error = NULL;
+      } else {
+        *out_error = login_error;
+        login_error = NULL;
+      }
     } else {
       free(login_error);
     }
+    free(auth_failure_error);
     return NULL;
   }
 
   free(login_error);
+  free(auth_failure_error);
   return access_token;
 }
 
@@ -1200,6 +1678,22 @@ static char* riot_login_local(CURL* curl, char** out_error) {
   return token;
 }
 
+static bool has_browser_env(void) {
+  const char* env_token = getenv("VALORANT_ACCESS_TOKEN");
+  if (env_token && env_token[0]) {
+    return true;
+  }
+  const char* env_url = getenv("VALORANT_REDIRECT_URL");
+  if (env_url && env_url[0]) {
+    return true;
+  }
+  const char* env_file = getenv("VALORANT_REDIRECT_FILE");
+  if (env_file && env_file[0]) {
+    return true;
+  }
+  return false;
+}
+
 static char* riot_login_browser(char** out_error) {
   if (out_error) {
     *out_error = NULL;
@@ -1303,6 +1797,495 @@ static char* riot_login_browser(char** out_error) {
 
   if (out_error) {
     *out_error = dup_string("browser_token_missing");
+  }
+  return NULL;
+}
+
+static struct curl_slist* build_qr_headers(
+    const char* user_agent,
+    const char* baggage_header,
+    const char* trace_header,
+    const char* country_header,
+    bool json_body) {
+  struct curl_slist* headers = NULL;
+  headers = curl_slist_append(headers, "Accept: application/json");
+  headers = curl_slist_append(headers, "Connection: keep-alive");
+  if (json_body) {
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+  }
+  if (user_agent && user_agent[0]) {
+    char* ua_header = format_header("User-Agent", user_agent);
+    if (ua_header) {
+      headers = curl_slist_append(headers, ua_header);
+      free(ua_header);
+    }
+  }
+  if (baggage_header) {
+    headers = curl_slist_append(headers, baggage_header);
+  }
+  if (trace_header) {
+    headers = curl_slist_append(headers, trace_header);
+  }
+  if (country_header) {
+    headers = curl_slist_append(headers, country_header);
+  }
+  return headers;
+}
+
+static char* build_clientconfig_url(const char* region) {
+  if (!region || !region[0]) {
+    region = "NA";
+  }
+  const char* tmpl =
+      "https://clientconfig.rpg.riotgames.com/api/v1/config/public?"
+      "os=windows&region=%s&app=Riot%%20Client&version=97.0.1.2366&"
+      "patchline=KeystoneFoundationLiveWin";
+  size_t len = (size_t)snprintf(NULL, 0, tmpl, region);
+  char* out = (char*)malloc(len + 1);
+  if (!out) {
+    return NULL;
+  }
+  snprintf(out, len + 1, tmpl, region);
+  return out;
+}
+
+static char* build_qr_login_body(const char* language) {
+  char* escaped_lang = json_escape(language);
+  if (!escaped_lang) {
+    return NULL;
+  }
+  const char* tmpl =
+      "{\"client_id\":\"riot-client\",\"language\":\"%s\","
+      "\"platform\":\"windows\",\"remember\":false,\"type\":\"auth\","
+      "\"qrcode\":{}}";
+  size_t len = (size_t)snprintf(NULL, 0, tmpl, escaped_lang);
+  char* out = (char*)malloc(len + 1);
+  if (!out) {
+    free(escaped_lang);
+    return NULL;
+  }
+  snprintf(out, len + 1, tmpl, escaped_lang);
+  free(escaped_lang);
+  return out;
+}
+
+static char* build_login_token_body(const char* login_token) {
+  char* escaped = json_escape(login_token);
+  if (!escaped) {
+    return NULL;
+  }
+  const char* tmpl =
+      "{\"authentication_type\":null,\"code_verifier\":\"\","
+      "\"login_token\":\"%s\",\"persist_login\":false}";
+  size_t len = (size_t)snprintf(NULL, 0, tmpl, escaped);
+  char* out = (char*)malloc(len + 1);
+  if (!out) {
+    free(escaped);
+    return NULL;
+  }
+  snprintf(out, len + 1, tmpl, escaped);
+  free(escaped);
+  return out;
+}
+
+static char* build_qr_authorization_body(const char* nonce) {
+  char* escaped_nonce = json_escape(nonce);
+  if (!escaped_nonce) {
+    return NULL;
+  }
+  const char* tmpl =
+      "{\"acr_values\":\"\",\"claims\":\"\",\"client_id\":\"riot-client\","
+      "\"code_challenge\":\"\",\"code_challenge_method\":\"\",\"nonce\":\"%s\","
+      "\"redirect_uri\":\"%s\",\"response_type\":\"token id_token\","
+      "\"scope\":\"%s\"}";
+  size_t len = (size_t)snprintf(NULL, 0, tmpl, escaped_nonce,
+                                VALORANT_QR_REDIRECT_URI, VALORANT_QR_SCOPE);
+  char* out = (char*)malloc(len + 1);
+  if (!out) {
+    free(escaped_nonce);
+    return NULL;
+  }
+  snprintf(out, len + 1, tmpl, escaped_nonce, VALORANT_QR_REDIRECT_URI,
+           VALORANT_QR_SCOPE);
+  free(escaped_nonce);
+  return out;
+}
+
+static char* riot_login_qr(
+    CURL* curl,
+    const char* country_code,
+    char** out_error) {
+  if (out_error) {
+    *out_error = NULL;
+  }
+  if (!curl) {
+    if (out_error) {
+      *out_error = dup_string("invalid_curl");
+    }
+    return NULL;
+  }
+
+  const char* country = country_code && country_code[0]
+                            ? country_code
+                            : VALORANT_QR_DEFAULT_COUNTRY;
+  const char* region = region_for_language(country);
+  char* language = normalize_language_code(country);
+  if (!language) {
+    if (out_error) {
+      *out_error = dup_string("qr_language_failed");
+    }
+    return NULL;
+  }
+
+  char sdk_sid[37];
+  if (!uuid_v4_string(sdk_sid)) {
+    if (out_error) {
+      *out_error = dup_string("qr_sdk_sid_failed");
+    }
+    free(language);
+    return NULL;
+  }
+
+  char trace_id[33];
+  char parent_id[17];
+  char traceparent_value[64];
+  if (!random_hex_string(trace_id, sizeof(trace_id) - 1) ||
+      !random_hex_string(parent_id, sizeof(parent_id) - 1)) {
+    if (out_error) {
+      *out_error = dup_string("qr_trace_failed");
+    }
+    free(language);
+    return NULL;
+  }
+  snprintf(traceparent_value, sizeof(traceparent_value), "00-%s-%s-00",
+           trace_id, parent_id);
+
+  char baggage_value[64];
+  snprintf(baggage_value, sizeof(baggage_value), "sdksid=%s", sdk_sid);
+
+  char* baggage_header = format_header("baggage", baggage_value);
+  char* trace_header = format_header("traceparent", traceparent_value);
+  char* country_header = format_header("country-code", country);
+
+  http_response_t response = {0};
+  struct curl_slist* headers = NULL;
+  char* config_url = NULL;
+  char* login_body = NULL;
+  char* cluster = NULL;
+  char* suuid = NULL;
+  char* timestamp = NULL;
+  char* login_token = NULL;
+  char* login_url = NULL;
+  char* token_body = NULL;
+  char* auth_body = NULL;
+  char* uri = NULL;
+  char* access_token = NULL;
+
+  config_url = build_clientconfig_url(region);
+  if (!config_url) {
+    if (out_error) {
+      *out_error = dup_string("qr_config_url_failed");
+    }
+    goto cleanup;
+  }
+  headers = build_qr_headers(VALORANT_QR_CONFIG_AGENT, baggage_header,
+                             trace_header, country_header, false);
+  if (!http_request(curl, "GET", config_url, headers, NULL, &response) ||
+      !status_ok(&response)) {
+    if (out_error) {
+      *out_error = response.data ? dup_string(response.data)
+                                 : dup_string("qr_config_failed");
+    }
+    goto cleanup;
+  }
+  curl_slist_free_all(headers);
+  headers = NULL;
+  response_reset(&response);
+
+  headers = build_qr_headers(VALORANT_QR_AUTH_AGENT, baggage_header,
+                             trace_header, country_header, false);
+  if (!http_request(curl, "GET",
+                    "https://auth.riotgames.com/.well-known/openid-configuration",
+                    headers, NULL, &response) ||
+      !status_ok(&response)) {
+    if (out_error) {
+      *out_error = response.data ? dup_string(response.data)
+                                 : dup_string("qr_openid_failed");
+    }
+    goto cleanup;
+  }
+  curl_slist_free_all(headers);
+  headers = NULL;
+  response_reset(&response);
+
+  login_body = build_qr_login_body(language);
+  if (!login_body) {
+    if (out_error) {
+      *out_error = dup_string("qr_login_body_failed");
+    }
+    goto cleanup;
+  }
+  headers = build_qr_headers(VALORANT_QR_LOGIN_AGENT, baggage_header,
+                             trace_header, country_header, true);
+  if (!http_request(curl, "POST",
+                    "https://authenticate.riotgames.com/api/v1/login",
+                    headers, login_body, &response) ||
+      !status_ok(&response)) {
+    if (out_error) {
+      *out_error = response.data ? dup_string(response.data)
+                                 : dup_string("qr_login_failed");
+    }
+    goto cleanup;
+  }
+
+  cluster = extract_json_string(response.data, "cluster");
+  suuid = extract_json_string(response.data, "suuid");
+  timestamp = extract_json_value(response.data, "timestamp");
+  if (!cluster || !suuid || !timestamp) {
+    if (out_error) {
+      *out_error = response.data ? dup_string(response.data)
+                                 : dup_string("qr_login_data_missing");
+    }
+    goto cleanup;
+  }
+
+  size_t login_len = strlen(cluster) + strlen(suuid) + strlen(timestamp) + 128;
+  login_url = (char*)malloc(login_len);
+  if (!login_url) {
+    if (out_error) {
+      *out_error = dup_string("qr_login_url_failed");
+    }
+    goto cleanup;
+  }
+  snprintf(login_url, login_len,
+           "https://qrlogin.riotgames.com/riotmobile?cluster=%s&suuid=%s&"
+           "timestamp=%s&utm_source=riotclient&utm_medium=client&"
+           "utm_campaign=qrlogin-riotmobile",
+           cluster, suuid, timestamp);
+
+  printf("Open or scan this Riot Mobile login URL:\n%s\n", login_url);
+  fflush(stdout);
+
+  int timeout_sec = env_int("VALORANT_QR_TIMEOUT", 120);
+  int poll_ms = env_int("VALORANT_QR_POLL_MS", 2000);
+  if (poll_ms < 500) {
+    poll_ms = 500;
+  }
+  time_t start = time(NULL);
+  while (true) {
+    if (timeout_sec > 0 &&
+        difftime(time(NULL), start) > (double)timeout_sec) {
+      if (out_error) {
+        *out_error = dup_string("qr_login_timeout");
+      }
+      goto cleanup;
+    }
+
+    response_reset(&response);
+    curl_slist_free_all(headers);
+    headers = build_qr_headers(VALORANT_QR_LOGIN_AGENT, baggage_header,
+                               trace_header, country_header, false);
+    if (!http_request(curl, "GET",
+                      "https://authenticate.riotgames.com/api/v1/login",
+                      headers, NULL, &response) ||
+        !status_ok(&response)) {
+      if (out_error) {
+        *out_error = response.data ? dup_string(response.data)
+                                   : dup_string("qr_login_poll_failed");
+      }
+      goto cleanup;
+    }
+
+    char* type = extract_json_string(response.data, "type");
+    if (type && strcmp(type, "success") == 0) {
+      login_token = extract_json_string(response.data, "login_token");
+      free(type);
+      if (!login_token) {
+        if (out_error) {
+          *out_error = response.data ? dup_string(response.data)
+                                     : dup_string("qr_login_token_missing");
+        }
+        goto cleanup;
+      }
+      break;
+    }
+    if (type && strcmp(type, "error") == 0) {
+      if (out_error) {
+        *out_error = response.data ? dup_string(response.data)
+                                   : dup_string("qr_login_error");
+      }
+      free(type);
+      goto cleanup;
+    }
+    free(type);
+    sleep_ms((unsigned int)poll_ms);
+  }
+
+  response_reset(&response);
+  curl_slist_free_all(headers);
+  headers = NULL;
+  token_body = build_login_token_body(login_token);
+  if (!token_body) {
+    if (out_error) {
+      *out_error = dup_string("qr_token_body_failed");
+    }
+    goto cleanup;
+  }
+  headers = build_qr_headers(VALORANT_QR_TOKEN_AGENT, baggage_header,
+                             trace_header, country_header, true);
+  if (!http_request(curl, "POST",
+                    "https://auth.riotgames.com/api/v1/login-token",
+                    headers, token_body, &response) ||
+      !status_ok(&response)) {
+    if (out_error) {
+      *out_error = response.data ? dup_string(response.data)
+                                 : dup_string("qr_token_exchange_failed");
+    }
+    goto cleanup;
+  }
+
+  char nonce[37];
+  if (!uuid_v4_string(nonce)) {
+    if (out_error) {
+      *out_error = dup_string("qr_nonce_failed");
+    }
+    goto cleanup;
+  }
+  auth_body = build_qr_authorization_body(nonce);
+  if (!auth_body) {
+    if (out_error) {
+      *out_error = dup_string("qr_auth_body_failed");
+    }
+    goto cleanup;
+  }
+
+  response_reset(&response);
+  curl_slist_free_all(headers);
+  headers = build_qr_headers(VALORANT_QR_TOKEN_AGENT, baggage_header,
+                             trace_header, country_header, true);
+  if (!http_request(curl, "POST",
+                    "https://auth.riotgames.com/api/v1/authorization",
+                    headers, auth_body, &response) ||
+      !status_ok(&response)) {
+    if (out_error) {
+      *out_error = response.data ? dup_string(response.data)
+                                 : dup_string("qr_authorization_failed");
+    }
+    goto cleanup;
+  }
+
+  uri = extract_json_string(response.data, "uri");
+  if (uri) {
+    access_token = extract_query_value(uri, "access_token");
+  }
+  if (!access_token) {
+    access_token = extract_access_token_from_text(response.data);
+  }
+  if (!access_token && out_error) {
+    *out_error = response.data ? dup_string(response.data)
+                               : dup_string("qr_access_token_missing");
+  }
+
+cleanup:
+  curl_slist_free_all(headers);
+  response_reset(&response);
+  free(config_url);
+  free(login_body);
+  free(cluster);
+  free(suuid);
+  free(timestamp);
+  free(login_token);
+  free(login_url);
+  free(token_body);
+  free(auth_body);
+  free(uri);
+  free(baggage_header);
+  free(trace_header);
+  free(country_header);
+  free(language);
+  return access_token;
+}
+
+static char* valorant_login(
+    CURL* curl,
+    const char* username,
+    const char* password,
+    char** out_error) {
+  if (out_error) {
+    *out_error = NULL;
+  }
+
+  char* access_token = NULL;
+  char* last_error = NULL;
+  bool have_browser_env = has_browser_env();
+  bool use_qr = env_is_truthy("VALORANT_QR_LOGIN");
+  bool have_creds =
+      username && password && username[0] && password[0] &&
+      strcmp(username, "YOUR_USERNAME") != 0 &&
+      strcmp(password, "YOUR_PASSWORD") != 0;
+
+  if (have_browser_env) {
+    access_token = riot_login_browser(&last_error);
+    if (access_token) {
+      return access_token;
+    }
+  }
+
+  if (use_qr) {
+    const char* country_code = get_country_code();
+    char* qr_error = NULL;
+    access_token = riot_login_qr(curl, country_code, &qr_error);
+    if (access_token) {
+      free(last_error);
+      return access_token;
+    }
+    if (qr_error) {
+      free(last_error);
+      last_error = qr_error;
+    }
+  }
+
+  if (have_creds) {
+    char* creds_error = NULL;
+    access_token = valorant_login_with_creds(curl, username, password, &creds_error);
+    if (access_token) {
+      free(last_error);
+      return access_token;
+    }
+    if (creds_error) {
+      free(last_error);
+      last_error = creds_error;
+    }
+  }
+
+  char* local_error = NULL;
+  access_token = riot_login_local(curl, &local_error);
+  if (access_token) {
+    free(last_error);
+    return access_token;
+  }
+  if (local_error) {
+    free(last_error);
+    last_error = local_error;
+  }
+
+  if (!have_browser_env) {
+    char* browser_error = NULL;
+    access_token = riot_login_browser(&browser_error);
+    if (access_token) {
+      free(last_error);
+      return access_token;
+    }
+    if (browser_error) {
+      free(last_error);
+      last_error = browser_error;
+    }
+  }
+
+  if (out_error) {
+    *out_error = last_error;
+  } else {
+    free(last_error);
   }
   return NULL;
 }
@@ -1420,6 +2403,160 @@ static bool valorant_fetch_auth_data(
   return true;
 }
 
+static char* valorant_refresh_access_token(CURL* curl, char** out_error) {
+  if (out_error) {
+    *out_error = NULL;
+  }
+  if (!curl) {
+    if (out_error) {
+      *out_error = dup_string("invalid_curl");
+    }
+    return NULL;
+  }
+
+  char* redirect_encoded = url_encode("https://playvalorant.com/opt_in");
+  char* scope_encoded = url_encode("account openid");
+  char* response_encoded = url_encode("token id_token");
+  if (!redirect_encoded || !scope_encoded || !response_encoded) {
+    if (out_error) {
+      *out_error = dup_string("refresh_url_encode_failed");
+    }
+    free(redirect_encoded);
+    free(scope_encoded);
+    free(response_encoded);
+    return NULL;
+  }
+
+  const char* tmpl =
+      "https://auth.riotgames.com/authorize?redirect_uri=%s&client_id=%s&"
+      "response_type=%s&nonce=1&scope=%s";
+  size_t url_len =
+      (size_t)snprintf(NULL, 0, tmpl, redirect_encoded, VALORANT_CLIENT_ID,
+                       response_encoded, scope_encoded);
+  char* url = (char*)malloc(url_len + 1);
+  if (!url) {
+    if (out_error) {
+      *out_error = dup_string("refresh_url_build_failed");
+    }
+    free(redirect_encoded);
+    free(scope_encoded);
+    free(response_encoded);
+    return NULL;
+  }
+  snprintf(url, url_len + 1, tmpl, redirect_encoded, VALORANT_CLIENT_ID,
+           response_encoded, scope_encoded);
+  free(redirect_encoded);
+  free(scope_encoded);
+  free(response_encoded);
+
+  http_response_t response = {0};
+  struct curl_slist* headers = NULL;
+  headers = curl_slist_append(headers, "Accept: application/json");
+
+  char* location = NULL;
+  bool ok = http_request_with_location(curl, "GET", url, headers, NULL, &response,
+                                       &location);
+  curl_slist_free_all(headers);
+  free(url);
+
+  if (!ok) {
+    if (out_error) {
+      *out_error = response.data ? dup_string(response.data)
+                                 : dup_string("refresh_request_failed");
+    }
+    response_reset(&response);
+    free(location);
+    return NULL;
+  }
+
+  if (!status_ok(&response) && !status_redirect(&response)) {
+    if (out_error) {
+      *out_error = response.data ? dup_string(response.data)
+                                 : dup_string("refresh_request_failed");
+    }
+    response_reset(&response);
+    free(location);
+    return NULL;
+  }
+
+  char* token = NULL;
+  if (location) {
+    token = extract_query_value(location, "access_token");
+    if (!token) {
+      token = extract_access_token_from_text(location);
+    }
+  }
+  if (!token && response.data) {
+    token = extract_access_token_from_text(response.data);
+  }
+  if (!token && out_error) {
+    *out_error = response.data ? dup_string(response.data)
+                               : dup_string("refresh_token_missing");
+  }
+
+  response_reset(&response);
+  free(location);
+  return token;
+}
+
+static bool valorant_refresh_session(
+    CURL* curl,
+    char** access_token,
+    char** entitlements,
+    char** user_id,
+    bool* out_unauthorized,
+    char** out_error) {
+  if (out_error) {
+    *out_error = NULL;
+  }
+  if (out_unauthorized) {
+    *out_unauthorized = false;
+  }
+  if (!curl || !access_token || !*access_token || !entitlements || !user_id) {
+    if (out_error) {
+      *out_error = dup_string("refresh_invalid_arguments");
+    }
+    return false;
+  }
+
+  char* refresh_error = NULL;
+  char* new_token = valorant_refresh_access_token(curl, &refresh_error);
+  if (!new_token) {
+    if (out_error) {
+      *out_error = refresh_error ? refresh_error : dup_string("refresh_failed");
+    } else {
+      free(refresh_error);
+    }
+    return false;
+  }
+  free(refresh_error);
+
+  char* new_entitlements = NULL;
+  char* new_user_id = NULL;
+  bool unauthorized = false;
+  if (!valorant_fetch_auth_data(curl, new_token, &new_entitlements, &new_user_id,
+                                &unauthorized)) {
+    if (out_unauthorized) {
+      *out_unauthorized = unauthorized;
+    }
+    free(new_token);
+    free(new_entitlements);
+    free(new_user_id);
+    if (out_error) {
+      *out_error = dup_string("refresh_auth_failed");
+    }
+    return false;
+  }
+
+  free(*access_token);
+  free(*entitlements);
+  free(*user_id);
+  *access_token = new_token;
+  *entitlements = new_entitlements;
+  *user_id = new_user_id;
+  return true;
+}
+
 int main(void) {
   const char* username = getenv("VALORANT_USERNAME");
   const char* password = getenv("VALORANT_PASSWORD");
@@ -1428,16 +2565,6 @@ int main(void) {
   }
   if (!password || !password[0]) {
     password = VALORANT_PASSWORD;
-  }
-
-  bool have_creds =
-      username && password && username[0] && password[0] &&
-      strcmp(username, "YOUR_USERNAME") != 0 &&
-      strcmp(password, "YOUR_PASSWORD") != 0;
-
-  if (!have_creds) {
-    fprintf(stderr, "Provide VALORANT_USERNAME/VALORANT_PASSWORD.\n");
-    return 1;
   }
 
   if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
@@ -1453,9 +2580,26 @@ int main(void) {
   }
 
   curl_easy_setopt(curl, CURLOPT_COOKIEFILE, "");
-  curl_easy_setopt(curl, CURLOPT_USERAGENT, VALORANT_USER_AGENT);
+  const char* user_agent = getenv("VALORANT_USER_AGENT");
+  if (!user_agent || !user_agent[0]) {
+    user_agent = VALORANT_USER_AGENT;
+  }
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, user_agent);
   curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
   curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 20000L);
+
+  const char* refresh_on_login_env = getenv("VALORANT_REFRESH_ON_LOGIN");
+  bool refresh_on_login = refresh_on_login_env
+                              ? env_is_truthy("VALORANT_REFRESH_ON_LOGIN")
+                              : true;
+  if (env_is_truthy("VALORANT_REFRESH_DISABLE")) {
+    refresh_on_login = false;
+  }
+  bool refresh_required = env_is_truthy("VALORANT_REFRESH_REQUIRED");
+  int refresh_interval = env_int("VALORANT_REFRESH_INTERVAL_SEC", 0);
+  if (refresh_interval > 0) {
+    refresh_on_login = true;
+  }
 
   char* account_url_template = read_account_xp_url(VALORANT_DATA_PATH);
   if (!account_url_template) {
@@ -1488,7 +2632,7 @@ int main(void) {
     char* account_url = NULL;
 
     char* login_error = NULL;
-    access_token = valorant_login_with_creds(curl, username, password, &login_error);
+    access_token = valorant_login(curl, username, password, &login_error);
     if (!access_token) {
       fprintf(stderr, "Login failed.\n");
       if (login_error) {
@@ -1539,6 +2683,24 @@ int main(void) {
         retry = true;
       }
       goto attempt_cleanup;
+    }
+
+    if (refresh_on_login || refresh_required) {
+      fprintf(stderr, "Refreshing access token...\n");
+      char* refresh_error = NULL;
+      bool refreshed = valorant_refresh_session(
+          curl, &access_token, &entitlements, &user_id, NULL, &refresh_error);
+      if (!refreshed) {
+        fprintf(stderr, "Access token refresh failed.\n");
+        if (refresh_error) {
+          fprintf(stderr, "%s\n", refresh_error);
+        }
+        if (refresh_required) {
+          free(refresh_error);
+          goto attempt_cleanup;
+        }
+      }
+      free(refresh_error);
     }
 
     bearer = (char*)malloc(strlen(access_token) + 8);
@@ -1638,6 +2800,39 @@ int main(void) {
       printf("%s\n", response.data);
     }
     success = true;
+
+    if (refresh_interval > 0) {
+      curl_slist_free_all(headers);
+      headers = NULL;
+      response_reset(&response);
+      free(account_url);
+      account_url = NULL;
+      free(client_version);
+      client_version = NULL;
+      free(bearer);
+      bearer = NULL;
+
+      fprintf(stderr, "Starting refresh loop every %d seconds.\n", refresh_interval);
+      while (true) {
+        sleep_ms((unsigned int)refresh_interval * 1000U);
+        char* refresh_error = NULL;
+        bool refreshed = valorant_refresh_session(
+            curl, &access_token, &entitlements, &user_id, NULL, &refresh_error);
+        if (refreshed) {
+          fprintf(stderr, "Access token refreshed.\n");
+          continue;
+        }
+        fprintf(stderr, "Access token refresh failed.\n");
+        if (refresh_error) {
+          fprintf(stderr, "%s\n", refresh_error);
+        }
+        free(refresh_error);
+        if (refresh_required) {
+          success = false;
+          break;
+        }
+      }
+    }
 
   attempt_cleanup:
     curl_slist_free_all(headers);

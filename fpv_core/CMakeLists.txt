@@ -35,7 +35,9 @@ target_include_directories(fpv_core PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 target_compile_features(fpv_core PUBLIC c_std_11)
 
-target_compile_definitions(fpv_core PRIVATE FPV_CORE_BUILD)
+target_compile_definitions(fpv_core PRIVATE
+  FPV_CORE_BUILD
+  $<$<BOOL:${FPV_BUILD_TESTS}>:FPV_ENABLE_TEST_HOOKS>)
 
 find_package(CURL REQUIRED)
 find_package(LibXml2 REQUIRED)
@@ -47,3 +49,10 @@ target_link_libraries(
     ${CMAKE_DL_LIBS}
     CURL::libcurl
     LibXml2::LibXml2)
+
+install(TARGETS fpv_core
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

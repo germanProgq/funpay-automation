@@ -26,6 +26,27 @@ typedef struct fpv_funpay_http_buffer {
 
 static size_t fpv_funpay_http_refcount = 0;
 
+#if defined(FPV_ENABLE_TEST_HOOKS)
+static fpv_funpay_http_mock_fn fpv_funpay_http_mock = NULL;
+static fpv_funpay_http_multipart_mock_fn fpv_funpay_http_multipart_mock = NULL;
+static void* fpv_funpay_http_mock_data = NULL;
+
+void fpv_funpay_http_set_mock(
+    fpv_funpay_http_mock_fn request,
+    fpv_funpay_http_multipart_mock_fn multipart,
+    void* user_data) {
+  fpv_funpay_http_mock = request;
+  fpv_funpay_http_multipart_mock = multipart;
+  fpv_funpay_http_mock_data = user_data;
+}
+
+void fpv_funpay_http_clear_mock(void) {
+  fpv_funpay_http_mock = NULL;
+  fpv_funpay_http_multipart_mock = NULL;
+  fpv_funpay_http_mock_data = NULL;
+}
+#endif
+
 static bool fpv_funpay_http_global_acquire(void) {
   if (fpv_funpay_http_refcount == 0) {
     if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
@@ -283,6 +304,21 @@ fpv_result_t fpv_funpay_http_request(
     const char* body,
     fpv_funpay_http_response_t* response,
     fpv_funpay_error_t* error) {
+#if defined(FPV_ENABLE_TEST_HOOKS)
+  if (fpv_funpay_http_mock) {
+    return fpv_funpay_http_mock(
+        client,
+        method,
+        url,
+        cookie,
+        headers,
+        header_count,
+        body,
+        response,
+        error,
+        fpv_funpay_http_mock_data);
+  }
+#endif
   if (!client || !method || !url || !response) {
     return FPV_ERR_INVALID_ARGUMENT;
   }
@@ -390,6 +426,21 @@ fpv_result_t fpv_funpay_http_request_multipart(
     size_t part_count,
     fpv_funpay_http_response_t* response,
     fpv_funpay_error_t* error) {
+#if defined(FPV_ENABLE_TEST_HOOKS)
+  if (fpv_funpay_http_multipart_mock) {
+    return fpv_funpay_http_multipart_mock(
+        client,
+        url,
+        cookie,
+        headers,
+        header_count,
+        parts,
+        part_count,
+        response,
+        error,
+        fpv_funpay_http_mock_data);
+  }
+#endif
   if (!client || !url || !response) {
     return FPV_ERR_INVALID_ARGUMENT;
   }

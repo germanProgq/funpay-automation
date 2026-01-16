@@ -9,3 +9,5 @@ add_executable(fpv_app
 
 target_include_directories(fpv_app PRIVATE ${CMAKE_SOURCE_DIR}/fpv_core/include)
 target_link_libraries(fpv_app PRIVATE fpv_core PkgConfig::GTK4)
+
+install(TARGETS fpv_app RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

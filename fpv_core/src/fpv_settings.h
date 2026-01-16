@@ -36,6 +36,7 @@ typedef struct fpv_settings {
   char* greetings_text;
   bool order_confirm_send_reply;
   char* order_confirm_text;
+  bool review_reply_enabled_all;
   bool review_reply_enabled[5];
   char* review_reply_texts[5];
   bool telegram_enabled;

@@ -1,0 +1,6 @@
+<!-- FunPay Vertex icon. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="32" ry="32" fill="#1f3a5f"/>
+  <circle cx="128" cy="128" r="72" fill="#ffffff"/>
+  <path d="M128 70 L178 178 H78 Z" fill="#1f3a5f"/>
+</svg>

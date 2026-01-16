@@ -50,6 +50,27 @@
 #define FPV_VERSION "0.1.0"
 #endif
 
+#if defined(FPV_ENABLE_TEST_HOOKS)
+static fpv_telegram_http_mock_fn fpv_tg_http_mock = NULL;
+static fpv_telegram_http_multipart_mock_fn fpv_tg_http_multipart_mock = NULL;
+static void* fpv_tg_http_mock_data = NULL;
+
+void fpv_telegram_set_http_mock(
+    fpv_telegram_http_mock_fn request,
+    fpv_telegram_http_multipart_mock_fn multipart,
+    void* user_data) {
+  fpv_tg_http_mock = request;
+  fpv_tg_http_multipart_mock = multipart;
+  fpv_tg_http_mock_data = user_data;
+}
+
+void fpv_telegram_clear_http_mock(void) {
+  fpv_tg_http_mock = NULL;
+  fpv_tg_http_multipart_mock = NULL;
+  fpv_tg_http_mock_data = NULL;
+}
+#endif
+
 typedef enum fpv_tg_state_type {
   FPV_TG_STATE_NONE = 0,
   FPV_TG_STATE_ADD_CMD,
@@ -115,12 +136,6 @@ typedef struct fpv_tg_chat_settings {
   int64_t chat_id;
   bool enabled[16];
 } fpv_tg_chat_settings_t;
-
-typedef struct fpv_tg_http_response {
-  char* body;
-  size_t body_size;
-  long status;
-} fpv_tg_http_response_t;
 
 typedef struct fpv_tg_keyboard {
   char* buffer;
@@ -1154,6 +1169,18 @@ static fpv_result_t fpv_tg_http_request(
     const char* body,
     size_t body_size,
     fpv_tg_http_response_t* response) {
+#if defined(FPV_ENABLE_TEST_HOOKS)
+  if (fpv_tg_http_mock) {
+    return fpv_tg_http_mock(
+        method,
+        url,
+        content_type,
+        body,
+        body_size,
+        response,
+        fpv_tg_http_mock_data);
+  }
+#endif
   if (!url || !response) {
     return FPV_ERR_INVALID_ARGUMENT;
   }
@@ -1209,6 +1236,15 @@ static fpv_result_t fpv_tg_http_request_multipart(
     const char* url,
     curl_mime* mime,
     fpv_tg_http_response_t* response) {
+#if defined(FPV_ENABLE_TEST_HOOKS)
+  if (fpv_tg_http_multipart_mock) {
+    return fpv_tg_http_multipart_mock(
+        url,
+        mime,
+        response,
+        fpv_tg_http_mock_data);
+  }
+#endif
   if (!url || !response) {
     return FPV_ERR_INVALID_ARGUMENT;
   }

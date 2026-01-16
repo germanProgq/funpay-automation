@@ -3,6 +3,7 @@
 #ifndef FPV_TELEGRAM_H
 #define FPV_TELEGRAM_H
 
+#include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -15,6 +16,12 @@ typedef struct fpv_feature_state fpv_feature_state_t;
 typedef struct fpv_telegram_service fpv_telegram_service_t;
 
 typedef void (*fpv_telegram_control_fn)(void* context);
+
+typedef struct fpv_tg_http_response {
+  long status;
+  char* body;
+  size_t body_size;
+} fpv_tg_http_response_t;
 
 fpv_telegram_service_t* fpv_telegram_service_create(
     const char* token,
@@ -103,5 +110,30 @@ void fpv_telegram_service_notify_lots_raised(
 char* fpv_telegram_service_take_delivery_test(
     fpv_telegram_service_t* service,
     const char* key);
+
+#if defined(FPV_ENABLE_TEST_HOOKS)
+struct curl_mime;
+
+typedef fpv_result_t (*fpv_telegram_http_mock_fn)(
+    const char* method,
+    const char* url,
+    const char* content_type,
+    const char* body,
+    size_t body_size,
+    fpv_tg_http_response_t* response,
+    void* user_data);
+
+typedef fpv_result_t (*fpv_telegram_http_multipart_mock_fn)(
+    const char* url,
+    struct curl_mime* mime,
+    fpv_tg_http_response_t* response,
+    void* user_data);
+
+void fpv_telegram_set_http_mock(
+    fpv_telegram_http_mock_fn request,
+    fpv_telegram_http_multipart_mock_fn multipart,
+    void* user_data);
+void fpv_telegram_clear_http_mock(void);
+#endif
 
 #endif

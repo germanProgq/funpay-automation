@@ -1,0 +1,9 @@
+# FunPay Vertex desktop entry.
+[Desktop Entry]
+Name=FunPay Vertex
+Comment=FunPay automation desktop client
+Exec=fpv_app
+Icon=funpay_vertex
+Terminal=false
+Type=Application
+Categories=Utility;Network;

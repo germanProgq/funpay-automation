@@ -56,6 +56,7 @@ typedef struct fpv_feature_flags {
   char* greetings_text;
   bool order_confirm_send_reply;
   char* order_confirm_text;
+  bool review_reply_enabled_all;
   bool review_reply_enabled[5];
   char* review_reply_texts[5];
   uint32_t requests_delay_ms;
@@ -281,6 +282,7 @@ static fpv_result_t fpv_features_apply_settings(
   state->flags.greetings_send = settings->greetings_send;
   state->flags.order_confirm_send_reply =
       settings->order_confirm_send_reply;
+  state->flags.review_reply_enabled_all = settings->review_reply_enabled_all;
   for (size_t i = 0; i < 5; i++) {
     state->flags.review_reply_enabled[i] = settings->review_reply_enabled[i];
   }
@@ -773,7 +775,8 @@ static void fpv_features_handle_review_message(
   }
 
   char* reply_text = NULL;
-  if (state->flags.review_reply_enabled[stars - 1] &&
+  if (state->flags.review_reply_enabled_all &&
+      state->flags.review_reply_enabled[stars - 1] &&
       state->flags.review_reply_texts[stars - 1] &&
       state->flags.review_reply_texts[stars - 1][0]) {
     reply_text = fpv_format_order_detail_text(
