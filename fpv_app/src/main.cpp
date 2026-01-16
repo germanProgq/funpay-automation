@@ -407,18 +407,18 @@ static void apply_css(GtkWidget* window) {
       ".metric { padding: 12px; background: #ffffff; border: 1px solid #e2e2e2; }"
       ".metric-value { font-weight: 600; font-size: 18px; }"
       ".muted { color: #666666; }"
-      "listbox row:selected,"
-      "listbox row:selected:focus,"
-      "listbox row:selected:focus-within {"
+      "row:selected,"
+      "row:selected:focus,"
+      "row:selected:focus-within {"
       "  background-color: #e6e1da;"
-      "  color: #1f1f1f;"
+      "  background-image: none;"
       "}"
-      "listbox row:selected label,"
-      "listbox row:selected:focus label,"
-      "listbox row:selected:focus-within label { color: #1f1f1f; }"
-      "listbox row:selected .muted,"
-      "listbox row:selected:focus .muted,"
-      "listbox row:selected:focus-within .muted { color: #1f1f1f; }"
+      "row:selected label,"
+      "row:selected:focus label,"
+      "row:selected:focus-within label { color: #1f1f1f; }"
+      "row:selected .muted,"
+      "row:selected:focus .muted,"
+      "row:selected:focus-within .muted { color: #1f1f1f; }"
       "entry selection { background-color: #e6e1da; color: #1f1f1f; }"
       "label selection { background-color: #e6e1da; color: #1f1f1f; }"
       ".rating-star { color: #f6b400; font-weight: 600; }";
@@ -3243,7 +3243,7 @@ static GtkWidget* build_messages_page(AppContext* context) {
       GTK_SCROLLED_WINDOW(chat_scroller),
       GTK_POLICY_AUTOMATIC,
       GTK_POLICY_AUTOMATIC);
-  install_slow_scrolling(chat_scroller);
+  // install_slow_scrolling(chat_scroller);
 
   context->chat_list = gtk_list_box_new();
   gtk_list_box_set_selection_mode(
@@ -3274,7 +3274,7 @@ static GtkWidget* build_messages_page(AppContext* context) {
       GTK_SCROLLED_WINDOW(message_scroller),
       GTK_POLICY_AUTOMATIC,
       GTK_POLICY_AUTOMATIC);
-  install_slow_scrolling(message_scroller);
+  // install_slow_scrolling(message_scroller);
 
   context->message_list = gtk_list_box_new();
   gtk_list_box_set_selection_mode(
