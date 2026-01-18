@@ -6,6 +6,39 @@
 
 #include "fpv_string.h"
 
+static void fpv_string_array_destroy(char** items, size_t count) {
+  if (!items) {
+    return;
+  }
+  for (size_t i = 0; i < count; i++) {
+    fpv_free(items[i]);
+  }
+  fpv_free(items);
+}
+
+static char** fpv_string_array_clone(
+    const char* const* items,
+    size_t count) {
+  if (!items || count == 0) {
+    return NULL;
+  }
+  char** copy = (char**)calloc(count, sizeof(*copy));
+  if (!copy) {
+    return NULL;
+  }
+  for (size_t i = 0; i < count; i++) {
+    if (!items[i]) {
+      continue;
+    }
+    copy[i] = fpv_strdup(items[i]);
+    if (!copy[i]) {
+      fpv_string_array_destroy(copy, count);
+      return NULL;
+    }
+  }
+  return copy;
+}
+
 fpv_user_profile_t* fpv_user_profile_create(
     const char* id,
     const char* username,
@@ -525,4 +558,1004 @@ void fpv_plugin_destroy(fpv_plugin_t* plugin) {
   fpv_free(plugin->name);
   fpv_free(plugin->version);
   free(plugin);
+}
+
+fpv_organization_t* fpv_organization_create(
+    const char* id,
+    const char* name,
+    const char* timezone,
+    const char* currency,
+    const fpv_data_retention_policy_t* retention,
+    uint64_t created_at_ms,
+    uint64_t updated_at_ms) {
+  fpv_organization_t* organization =
+      (fpv_organization_t*)calloc(1, sizeof(*organization));
+  if (!organization) {
+    return NULL;
+  }
+
+  organization->id = fpv_strdup(id);
+  if (id && !organization->id) {
+    fpv_organization_destroy(organization);
+    return NULL;
+  }
+
+  organization->name = fpv_strdup(name);
+  if (name && !organization->name) {
+    fpv_organization_destroy(organization);
+    return NULL;
+  }
+
+  organization->timezone = fpv_strdup(timezone);
+  if (timezone && !organization->timezone) {
+    fpv_organization_destroy(organization);
+    return NULL;
+  }
+
+  organization->currency = fpv_strdup(currency);
+  if (currency && !organization->currency) {
+    fpv_organization_destroy(organization);
+    return NULL;
+  }
+
+  if (retention) {
+    organization->retention = *retention;
+  }
+
+  organization->created_at_ms = created_at_ms;
+  organization->updated_at_ms = updated_at_ms;
+  return organization;
+}
+
+fpv_organization_t* fpv_organization_clone(
+    const fpv_organization_t* organization) {
+  if (!organization) {
+    return NULL;
+  }
+  return fpv_organization_create(
+      organization->id,
+      organization->name,
+      organization->timezone,
+      organization->currency,
+      &organization->retention,
+      organization->created_at_ms,
+      organization->updated_at_ms);
+}
+
+void fpv_organization_destroy(fpv_organization_t* organization) {
+  if (!organization) {
+    return;
+  }
+  fpv_free(organization->id);
+  fpv_free(organization->name);
+  fpv_free(organization->timezone);
+  fpv_free(organization->currency);
+  free(organization);
+}
+
+fpv_team_t* fpv_team_create(
+    const char* id,
+    const char* organization_id,
+    const char* name,
+    bool active,
+    uint64_t created_at_ms,
+    uint64_t updated_at_ms) {
+  fpv_team_t* team = (fpv_team_t*)calloc(1, sizeof(*team));
+  if (!team) {
+    return NULL;
+  }
+
+  team->id = fpv_strdup(id);
+  if (id && !team->id) {
+    fpv_team_destroy(team);
+    return NULL;
+  }
+
+  team->organization_id = fpv_strdup(organization_id);
+  if (organization_id && !team->organization_id) {
+    fpv_team_destroy(team);
+    return NULL;
+  }
+
+  team->name = fpv_strdup(name);
+  if (name && !team->name) {
+    fpv_team_destroy(team);
+    return NULL;
+  }
+
+  team->active = active;
+  team->created_at_ms = created_at_ms;
+  team->updated_at_ms = updated_at_ms;
+  return team;
+}
+
+fpv_team_t* fpv_team_clone(const fpv_team_t* team) {
+  if (!team) {
+    return NULL;
+  }
+  return fpv_team_create(
+      team->id,
+      team->organization_id,
+      team->name,
+      team->active,
+      team->created_at_ms,
+      team->updated_at_ms);
+}
+
+void fpv_team_destroy(fpv_team_t* team) {
+  if (!team) {
+    return;
+  }
+  fpv_free(team->id);
+  fpv_free(team->organization_id);
+  fpv_free(team->name);
+  free(team);
+}
+
+fpv_user_t* fpv_user_create(
+    const char* id,
+    const char* email,
+    const char* display_name,
+    bool email_verified,
+    bool active,
+    uint64_t created_at_ms,
+    uint64_t last_login_ms) {
+  fpv_user_t* user = (fpv_user_t*)calloc(1, sizeof(*user));
+  if (!user) {
+    return NULL;
+  }
+
+  user->id = fpv_strdup(id);
+  if (id && !user->id) {
+    fpv_user_destroy(user);
+    return NULL;
+  }
+
+  user->email = fpv_strdup(email);
+  if (email && !user->email) {
+    fpv_user_destroy(user);
+    return NULL;
+  }
+
+  user->display_name = fpv_strdup(display_name);
+  if (display_name && !user->display_name) {
+    fpv_user_destroy(user);
+    return NULL;
+  }
+
+  user->email_verified = email_verified;
+  user->active = active;
+  user->created_at_ms = created_at_ms;
+  user->last_login_ms = last_login_ms;
+  return user;
+}
+
+fpv_user_t* fpv_user_clone(const fpv_user_t* user) {
+  if (!user) {
+    return NULL;
+  }
+  return fpv_user_create(
+      user->id,
+      user->email,
+      user->display_name,
+      user->email_verified,
+      user->active,
+      user->created_at_ms,
+      user->last_login_ms);
+}
+
+void fpv_user_destroy(fpv_user_t* user) {
+  if (!user) {
+    return;
+  }
+  fpv_free(user->id);
+  fpv_free(user->email);
+  fpv_free(user->display_name);
+  free(user);
+}
+
+fpv_user_role_t* fpv_user_role_create(
+    const char* user_id,
+    const char* organization_id,
+    const char* team_id,
+    fpv_role_t role,
+    uint64_t assigned_at_ms) {
+  fpv_user_role_t* assignment =
+      (fpv_user_role_t*)calloc(1, sizeof(*assignment));
+  if (!assignment) {
+    return NULL;
+  }
+
+  assignment->user_id = fpv_strdup(user_id);
+  if (user_id && !assignment->user_id) {
+    fpv_user_role_destroy(assignment);
+    return NULL;
+  }
+
+  assignment->organization_id = fpv_strdup(organization_id);
+  if (organization_id && !assignment->organization_id) {
+    fpv_user_role_destroy(assignment);
+    return NULL;
+  }
+
+  assignment->team_id = fpv_strdup(team_id);
+  if (team_id && !assignment->team_id) {
+    fpv_user_role_destroy(assignment);
+    return NULL;
+  }
+
+  assignment->role = role;
+  assignment->assigned_at_ms = assigned_at_ms;
+  return assignment;
+}
+
+fpv_user_role_t* fpv_user_role_clone(const fpv_user_role_t* role) {
+  if (!role) {
+    return NULL;
+  }
+  return fpv_user_role_create(
+      role->user_id,
+      role->organization_id,
+      role->team_id,
+      role->role,
+      role->assigned_at_ms);
+}
+
+void fpv_user_role_destroy(fpv_user_role_t* role) {
+  if (!role) {
+    return;
+  }
+  fpv_free(role->user_id);
+  fpv_free(role->organization_id);
+  fpv_free(role->team_id);
+  free(role);
+}
+
+fpv_account_t* fpv_account_create(
+    const char* id,
+    const char* organization_id,
+    const char* team_id,
+    const char* funpay_user_id,
+    const char* funpay_username,
+    const char* display_name,
+    const char* currency,
+    bool active,
+    uint64_t linked_at_ms,
+    uint64_t last_sync_at_ms) {
+  fpv_account_t* account = (fpv_account_t*)calloc(1, sizeof(*account));
+  if (!account) {
+    return NULL;
+  }
+
+  account->id = fpv_strdup(id);
+  if (id && !account->id) {
+    fpv_account_destroy(account);
+    return NULL;
+  }
+
+  account->organization_id = fpv_strdup(organization_id);
+  if (organization_id && !account->organization_id) {
+    fpv_account_destroy(account);
+    return NULL;
+  }
+
+  account->team_id = fpv_strdup(team_id);
+  if (team_id && !account->team_id) {
+    fpv_account_destroy(account);
+    return NULL;
+  }
+
+  account->funpay_user_id = fpv_strdup(funpay_user_id);
+  if (funpay_user_id && !account->funpay_user_id) {
+    fpv_account_destroy(account);
+    return NULL;
+  }
+
+  account->funpay_username = fpv_strdup(funpay_username);
+  if (funpay_username && !account->funpay_username) {
+    fpv_account_destroy(account);
+    return NULL;
+  }
+
+  account->display_name = fpv_strdup(display_name);
+  if (display_name && !account->display_name) {
+    fpv_account_destroy(account);
+    return NULL;
+  }
+
+  account->currency = fpv_strdup(currency);
+  if (currency && !account->currency) {
+    fpv_account_destroy(account);
+    return NULL;
+  }
+
+  account->active = active;
+  account->linked_at_ms = linked_at_ms;
+  account->last_sync_at_ms = last_sync_at_ms;
+  return account;
+}
+
+fpv_account_t* fpv_account_clone(const fpv_account_t* account) {
+  if (!account) {
+    return NULL;
+  }
+  return fpv_account_create(
+      account->id,
+      account->organization_id,
+      account->team_id,
+      account->funpay_user_id,
+      account->funpay_username,
+      account->display_name,
+      account->currency,
+      account->active,
+      account->linked_at_ms,
+      account->last_sync_at_ms);
+}
+
+void fpv_account_destroy(fpv_account_t* account) {
+  if (!account) {
+    return;
+  }
+  fpv_free(account->id);
+  fpv_free(account->organization_id);
+  fpv_free(account->team_id);
+  fpv_free(account->funpay_user_id);
+  fpv_free(account->funpay_username);
+  fpv_free(account->display_name);
+  fpv_free(account->currency);
+  free(account);
+}
+
+fpv_item_t* fpv_item_create(
+    const char* id,
+    const char* organization_id,
+    const char* title,
+    const char* normalized_title,
+    const char* category,
+    const char* subcategory,
+    const char* description,
+    const char* const* tags,
+    size_t tag_count,
+    uint64_t created_at_ms,
+    uint64_t updated_at_ms) {
+  if (tag_count > 0 && !tags) {
+    return NULL;
+  }
+
+  fpv_item_t* item = (fpv_item_t*)calloc(1, sizeof(*item));
+  if (!item) {
+    return NULL;
+  }
+
+  item->id = fpv_strdup(id);
+  if (id && !item->id) {
+    fpv_item_destroy(item);
+    return NULL;
+  }
+
+  item->organization_id = fpv_strdup(organization_id);
+  if (organization_id && !item->organization_id) {
+    fpv_item_destroy(item);
+    return NULL;
+  }
+
+  item->title = fpv_strdup(title);
+  if (title && !item->title) {
+    fpv_item_destroy(item);
+    return NULL;
+  }
+
+  item->normalized_title = fpv_strdup(normalized_title);
+  if (normalized_title && !item->normalized_title) {
+    fpv_item_destroy(item);
+    return NULL;
+  }
+
+  item->category = fpv_strdup(category);
+  if (category && !item->category) {
+    fpv_item_destroy(item);
+    return NULL;
+  }
+
+  item->subcategory = fpv_strdup(subcategory);
+  if (subcategory && !item->subcategory) {
+    fpv_item_destroy(item);
+    return NULL;
+  }
+
+  item->description = fpv_strdup(description);
+  if (description && !item->description) {
+    fpv_item_destroy(item);
+    return NULL;
+  }
+
+  if (tag_count > 0) {
+    item->tags = fpv_string_array_clone(tags, tag_count);
+    if (!item->tags) {
+      fpv_item_destroy(item);
+      return NULL;
+    }
+    item->tag_count = tag_count;
+  }
+
+  item->created_at_ms = created_at_ms;
+  item->updated_at_ms = updated_at_ms;
+  return item;
+}
+
+fpv_item_t* fpv_item_clone(const fpv_item_t* item) {
+  if (!item) {
+    return NULL;
+  }
+  return fpv_item_create(
+      item->id,
+      item->organization_id,
+      item->title,
+      item->normalized_title,
+      item->category,
+      item->subcategory,
+      item->description,
+      (const char* const*)item->tags,
+      item->tag_count,
+      item->created_at_ms,
+      item->updated_at_ms);
+}
+
+void fpv_item_destroy(fpv_item_t* item) {
+  if (!item) {
+    return;
+  }
+  fpv_free(item->id);
+  fpv_free(item->organization_id);
+  fpv_free(item->title);
+  fpv_free(item->normalized_title);
+  fpv_free(item->category);
+  fpv_free(item->subcategory);
+  fpv_free(item->description);
+  fpv_string_array_destroy(item->tags, item->tag_count);
+  free(item);
+}
+
+fpv_listing_t* fpv_listing_create(
+    const char* id,
+    const char* item_id,
+    const char* account_id,
+    const char* title,
+    const char* category,
+    const char* subcategory,
+    const char* status,
+    double price,
+    const char* currency,
+    uint32_t quantity,
+    const char* delivery_type,
+    uint64_t last_updated_ms,
+    const char* description,
+    const char* const* tags,
+    size_t tag_count) {
+  if (tag_count > 0 && !tags) {
+    return NULL;
+  }
+
+  fpv_listing_t* listing = (fpv_listing_t*)calloc(1, sizeof(*listing));
+  if (!listing) {
+    return NULL;
+  }
+
+  listing->id = fpv_strdup(id);
+  if (id && !listing->id) {
+    fpv_listing_destroy(listing);
+    return NULL;
+  }
+
+  listing->item_id = fpv_strdup(item_id);
+  if (item_id && !listing->item_id) {
+    fpv_listing_destroy(listing);
+    return NULL;
+  }
+
+  listing->account_id = fpv_strdup(account_id);
+  if (account_id && !listing->account_id) {
+    fpv_listing_destroy(listing);
+    return NULL;
+  }
+
+  listing->title = fpv_strdup(title);
+  if (title && !listing->title) {
+    fpv_listing_destroy(listing);
+    return NULL;
+  }
+
+  listing->category = fpv_strdup(category);
+  if (category && !listing->category) {
+    fpv_listing_destroy(listing);
+    return NULL;
+  }
+
+  listing->subcategory = fpv_strdup(subcategory);
+  if (subcategory && !listing->subcategory) {
+    fpv_listing_destroy(listing);
+    return NULL;
+  }
+
+  listing->status = fpv_strdup(status);
+  if (status && !listing->status) {
+    fpv_listing_destroy(listing);
+    return NULL;
+  }
+
+  listing->currency = fpv_strdup(currency);
+  if (currency && !listing->currency) {
+    fpv_listing_destroy(listing);
+    return NULL;
+  }
+
+  listing->delivery_type = fpv_strdup(delivery_type);
+  if (delivery_type && !listing->delivery_type) {
+    fpv_listing_destroy(listing);
+    return NULL;
+  }
+
+  listing->description = fpv_strdup(description);
+  if (description && !listing->description) {
+    fpv_listing_destroy(listing);
+    return NULL;
+  }
+
+  if (tag_count > 0) {
+    listing->tags = fpv_string_array_clone(tags, tag_count);
+    if (!listing->tags) {
+      fpv_listing_destroy(listing);
+      return NULL;
+    }
+    listing->tag_count = tag_count;
+  }
+
+  listing->price = price;
+  listing->quantity = quantity;
+  listing->last_updated_ms = last_updated_ms;
+  return listing;
+}
+
+fpv_listing_t* fpv_listing_clone(const fpv_listing_t* listing) {
+  if (!listing) {
+    return NULL;
+  }
+  return fpv_listing_create(
+      listing->id,
+      listing->item_id,
+      listing->account_id,
+      listing->title,
+      listing->category,
+      listing->subcategory,
+      listing->status,
+      listing->price,
+      listing->currency,
+      listing->quantity,
+      listing->delivery_type,
+      listing->last_updated_ms,
+      listing->description,
+      (const char* const*)listing->tags,
+      listing->tag_count);
+}
+
+void fpv_listing_destroy(fpv_listing_t* listing) {
+  if (!listing) {
+    return;
+  }
+  fpv_free(listing->id);
+  fpv_free(listing->item_id);
+  fpv_free(listing->account_id);
+  fpv_free(listing->title);
+  fpv_free(listing->category);
+  fpv_free(listing->subcategory);
+  fpv_free(listing->status);
+  fpv_free(listing->currency);
+  fpv_free(listing->delivery_type);
+  fpv_free(listing->description);
+  fpv_string_array_destroy(listing->tags, listing->tag_count);
+  free(listing);
+}
+
+fpv_competitor_listing_t* fpv_competitor_listing_create(
+    const char* id,
+    const char* item_id,
+    const char* seller_id,
+    double price,
+    const char* currency,
+    bool available,
+    const char* delivery_type,
+    double seller_rating,
+    uint64_t last_seen_ms,
+    const char* listing_url) {
+  fpv_competitor_listing_t* listing =
+      (fpv_competitor_listing_t*)calloc(1, sizeof(*listing));
+  if (!listing) {
+    return NULL;
+  }
+
+  listing->id = fpv_strdup(id);
+  if (id && !listing->id) {
+    fpv_competitor_listing_destroy(listing);
+    return NULL;
+  }
+
+  listing->item_id = fpv_strdup(item_id);
+  if (item_id && !listing->item_id) {
+    fpv_competitor_listing_destroy(listing);
+    return NULL;
+  }
+
+  listing->seller_id = fpv_strdup(seller_id);
+  if (seller_id && !listing->seller_id) {
+    fpv_competitor_listing_destroy(listing);
+    return NULL;
+  }
+
+  listing->currency = fpv_strdup(currency);
+  if (currency && !listing->currency) {
+    fpv_competitor_listing_destroy(listing);
+    return NULL;
+  }
+
+  listing->delivery_type = fpv_strdup(delivery_type);
+  if (delivery_type && !listing->delivery_type) {
+    fpv_competitor_listing_destroy(listing);
+    return NULL;
+  }
+
+  listing->listing_url = fpv_strdup(listing_url);
+  if (listing_url && !listing->listing_url) {
+    fpv_competitor_listing_destroy(listing);
+    return NULL;
+  }
+
+  listing->price = price;
+  listing->available = available;
+  listing->seller_rating = seller_rating;
+  listing->last_seen_ms = last_seen_ms;
+  return listing;
+}
+
+fpv_competitor_listing_t* fpv_competitor_listing_clone(
+    const fpv_competitor_listing_t* listing) {
+  if (!listing) {
+    return NULL;
+  }
+  return fpv_competitor_listing_create(
+      listing->id,
+      listing->item_id,
+      listing->seller_id,
+      listing->price,
+      listing->currency,
+      listing->available,
+      listing->delivery_type,
+      listing->seller_rating,
+      listing->last_seen_ms,
+      listing->listing_url);
+}
+
+void fpv_competitor_listing_destroy(fpv_competitor_listing_t* listing) {
+  if (!listing) {
+    return;
+  }
+  fpv_free(listing->id);
+  fpv_free(listing->item_id);
+  fpv_free(listing->seller_id);
+  fpv_free(listing->currency);
+  fpv_free(listing->delivery_type);
+  fpv_free(listing->listing_url);
+  free(listing);
+}
+
+fpv_price_rule_t* fpv_price_rule_create(
+    const char* id,
+    fpv_price_rule_scope_t scope,
+    const char* organization_id,
+    const char* team_id,
+    const char* item_id,
+    const char* listing_id,
+    double min_margin,
+    double min_price,
+    fpv_price_undercut_type_t undercut_type,
+    double undercut_value,
+    bool enabled,
+    uint64_t created_at_ms,
+    uint64_t updated_at_ms) {
+  fpv_price_rule_t* rule = (fpv_price_rule_t*)calloc(1, sizeof(*rule));
+  if (!rule) {
+    return NULL;
+  }
+
+  rule->id = fpv_strdup(id);
+  if (id && !rule->id) {
+    fpv_price_rule_destroy(rule);
+    return NULL;
+  }
+
+  rule->organization_id = fpv_strdup(organization_id);
+  if (organization_id && !rule->organization_id) {
+    fpv_price_rule_destroy(rule);
+    return NULL;
+  }
+
+  rule->team_id = fpv_strdup(team_id);
+  if (team_id && !rule->team_id) {
+    fpv_price_rule_destroy(rule);
+    return NULL;
+  }
+
+  rule->item_id = fpv_strdup(item_id);
+  if (item_id && !rule->item_id) {
+    fpv_price_rule_destroy(rule);
+    return NULL;
+  }
+
+  rule->listing_id = fpv_strdup(listing_id);
+  if (listing_id && !rule->listing_id) {
+    fpv_price_rule_destroy(rule);
+    return NULL;
+  }
+
+  rule->scope = scope;
+  rule->min_margin = min_margin;
+  rule->min_price = min_price;
+  rule->undercut_type = undercut_type;
+  rule->undercut_value = undercut_value;
+  rule->enabled = enabled;
+  rule->created_at_ms = created_at_ms;
+  rule->updated_at_ms = updated_at_ms;
+  return rule;
+}
+
+fpv_price_rule_t* fpv_price_rule_clone(const fpv_price_rule_t* rule) {
+  if (!rule) {
+    return NULL;
+  }
+  return fpv_price_rule_create(
+      rule->id,
+      rule->scope,
+      rule->organization_id,
+      rule->team_id,
+      rule->item_id,
+      rule->listing_id,
+      rule->min_margin,
+      rule->min_price,
+      rule->undercut_type,
+      rule->undercut_value,
+      rule->enabled,
+      rule->created_at_ms,
+      rule->updated_at_ms);
+}
+
+void fpv_price_rule_destroy(fpv_price_rule_t* rule) {
+  if (!rule) {
+    return;
+  }
+  fpv_free(rule->id);
+  fpv_free(rule->organization_id);
+  fpv_free(rule->team_id);
+  fpv_free(rule->item_id);
+  fpv_free(rule->listing_id);
+  free(rule);
+}
+
+fpv_price_history_t* fpv_price_history_create(
+    const char* id,
+    const char* listing_id,
+    const char* price_rule_id,
+    double competitor_median,
+    double recommended_price,
+    double applied_price,
+    const char* currency,
+    const char* reason,
+    uint64_t created_at_ms) {
+  fpv_price_history_t* history =
+      (fpv_price_history_t*)calloc(1, sizeof(*history));
+  if (!history) {
+    return NULL;
+  }
+
+  history->id = fpv_strdup(id);
+  if (id && !history->id) {
+    fpv_price_history_destroy(history);
+    return NULL;
+  }
+
+  history->listing_id = fpv_strdup(listing_id);
+  if (listing_id && !history->listing_id) {
+    fpv_price_history_destroy(history);
+    return NULL;
+  }
+
+  history->price_rule_id = fpv_strdup(price_rule_id);
+  if (price_rule_id && !history->price_rule_id) {
+    fpv_price_history_destroy(history);
+    return NULL;
+  }
+
+  history->currency = fpv_strdup(currency);
+  if (currency && !history->currency) {
+    fpv_price_history_destroy(history);
+    return NULL;
+  }
+
+  history->reason = fpv_strdup(reason);
+  if (reason && !history->reason) {
+    fpv_price_history_destroy(history);
+    return NULL;
+  }
+
+  history->competitor_median = competitor_median;
+  history->recommended_price = recommended_price;
+  history->applied_price = applied_price;
+  history->created_at_ms = created_at_ms;
+  return history;
+}
+
+fpv_price_history_t* fpv_price_history_clone(
+    const fpv_price_history_t* history) {
+  if (!history) {
+    return NULL;
+  }
+  return fpv_price_history_create(
+      history->id,
+      history->listing_id,
+      history->price_rule_id,
+      history->competitor_median,
+      history->recommended_price,
+      history->applied_price,
+      history->currency,
+      history->reason,
+      history->created_at_ms);
+}
+
+void fpv_price_history_destroy(fpv_price_history_t* history) {
+  if (!history) {
+    return;
+  }
+  fpv_free(history->id);
+  fpv_free(history->listing_id);
+  fpv_free(history->price_rule_id);
+  fpv_free(history->currency);
+  fpv_free(history->reason);
+  free(history);
+}
+
+fpv_audit_log_entry_t* fpv_audit_log_entry_create(
+    const char* id,
+    const char* organization_id,
+    const char* team_id,
+    const char* account_id,
+    const char* actor_user_id,
+    fpv_role_t actor_role,
+    const char* action,
+    const char* target_type,
+    const char* target_id,
+    const char* summary,
+    const char* metadata,
+    const char* ip_address,
+    const char* user_agent,
+    uint64_t created_at_ms) {
+  fpv_audit_log_entry_t* entry =
+      (fpv_audit_log_entry_t*)calloc(1, sizeof(*entry));
+  if (!entry) {
+    return NULL;
+  }
+
+  entry->id = fpv_strdup(id);
+  if (id && !entry->id) {
+    fpv_audit_log_entry_destroy(entry);
+    return NULL;
+  }
+
+  entry->organization_id = fpv_strdup(organization_id);
+  if (organization_id && !entry->organization_id) {
+    fpv_audit_log_entry_destroy(entry);
+    return NULL;
+  }
+
+  entry->team_id = fpv_strdup(team_id);
+  if (team_id && !entry->team_id) {
+    fpv_audit_log_entry_destroy(entry);
+    return NULL;
+  }
+
+  entry->account_id = fpv_strdup(account_id);
+  if (account_id && !entry->account_id) {
+    fpv_audit_log_entry_destroy(entry);
+    return NULL;
+  }
+
+  entry->actor_user_id = fpv_strdup(actor_user_id);
+  if (actor_user_id && !entry->actor_user_id) {
+    fpv_audit_log_entry_destroy(entry);
+    return NULL;
+  }
+
+  entry->action = fpv_strdup(action);
+  if (action && !entry->action) {
+    fpv_audit_log_entry_destroy(entry);
+    return NULL;
+  }
+
+  entry->target_type = fpv_strdup(target_type);
+  if (target_type && !entry->target_type) {
+    fpv_audit_log_entry_destroy(entry);
+    return NULL;
+  }
+
+  entry->target_id = fpv_strdup(target_id);
+  if (target_id && !entry->target_id) {
+    fpv_audit_log_entry_destroy(entry);
+    return NULL;
+  }
+
+  entry->summary = fpv_strdup(summary);
+  if (summary && !entry->summary) {
+    fpv_audit_log_entry_destroy(entry);
+    return NULL;
+  }
+
+  entry->metadata = fpv_strdup(metadata);
+  if (metadata && !entry->metadata) {
+    fpv_audit_log_entry_destroy(entry);
+    return NULL;
+  }
+
+  entry->ip_address = fpv_strdup(ip_address);
+  if (ip_address && !entry->ip_address) {
+    fpv_audit_log_entry_destroy(entry);
+    return NULL;
+  }
+
+  entry->user_agent = fpv_strdup(user_agent);
+  if (user_agent && !entry->user_agent) {
+    fpv_audit_log_entry_destroy(entry);
+    return NULL;
+  }
+
+  entry->actor_role = actor_role;
+  entry->created_at_ms = created_at_ms;
+  return entry;
+}
+
+fpv_audit_log_entry_t* fpv_audit_log_entry_clone(
+    const fpv_audit_log_entry_t* entry) {
+  if (!entry) {
+    return NULL;
+  }
+  return fpv_audit_log_entry_create(
+      entry->id,
+      entry->organization_id,
+      entry->team_id,
+      entry->account_id,
+      entry->actor_user_id,
+      entry->actor_role,
+      entry->action,
+      entry->target_type,
+      entry->target_id,
+      entry->summary,
+      entry->metadata,
+      entry->ip_address,
+      entry->user_agent,
+      entry->created_at_ms);
+}
+
+void fpv_audit_log_entry_destroy(fpv_audit_log_entry_t* entry) {
+  if (!entry) {
+    return;
+  }
+  fpv_free(entry->id);
+  fpv_free(entry->organization_id);
+  fpv_free(entry->team_id);
+  fpv_free(entry->account_id);
+  fpv_free(entry->actor_user_id);
+  fpv_free(entry->action);
+  fpv_free(entry->target_type);
+  fpv_free(entry->target_id);
+  fpv_free(entry->summary);
+  fpv_free(entry->metadata);
+  fpv_free(entry->ip_address);
+  fpv_free(entry->user_agent);
+  free(entry);
 }

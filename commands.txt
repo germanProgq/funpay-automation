@@ -1,0 +1,2 @@
+cmake --build build-gtk --target fpv_app
+./build-gtk/fpv_app/fpv_app

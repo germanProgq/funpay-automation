@@ -1,0 +1,72 @@
+Purpose: Phase 0 product scope and success criteria for FunPay Vertex.
+
+Core user journeys
+1) Sign up and organization setup
+   - User creates an account with email and password, verifies email, and sets a recovery method.
+   - User creates an organization with name, timezone, and currency defaults.
+   - Organization owner is assigned and initial workspace is created with audit logging enabled.
+   - Success: account verified, organization created, owner role assigned, and baseline settings saved.
+
+2) Connect FunPay account
+   - User provides the FunPay session token (Golden Key), user agent, and optional IPv4 proxy settings.
+   - System validates credentials by fetching profile and inventory, then stores a secured session profile.
+   - Initial inventory sync completes and the account status is marked healthy.
+   - Failure path: invalid token or network errors surface clear remediation steps and allow retry.
+   - Success: FunPay account linked, inventory imported, and health checks passing.
+
+3) Manage team and access
+   - Owner invites team members by email and assigns roles (Owner, Admin, Manager, Analyst, Viewer).
+   - Admin configures team scopes for allowed categories and pricing rules.
+   - All access changes and sensitive actions are recorded in audit logs.
+   - Success: invites accepted, roles enforced, scoped access applied, audit trail complete.
+
+4) Price items
+   - User reviews inventory, sets pricing rules (min margin, min price, undercut strategy).
+   - System computes recommended prices using competitor data and rule safety limits.
+   - User reviews changes, approves, and applies updates to FunPay.
+   - System monitors outcomes and flags items that breach margin or competitiveness targets.
+   - Success: prices updated within SLA, safety checks enforced, and results tracked.
+
+Required data sources
+1) FunPay inventory (account-owned)
+   - Source: authenticated FunPay account endpoints using Golden Key session.
+   - Fields: listing_id, title, category, price, currency, quantity, delivery type, status,
+     last_updated, tags, description.
+   - Cadence: full sync on linking, incremental sync every 10 minutes, and on-demand refresh.
+   - Validation: normalize titles, categories, and ensure currency consistency.
+
+2) Competitor listings (marketplace)
+   - Source: public FunPay search results scoped by category and normalized title.
+   - Fields: competitor_listing_id, seller_id, price, currency, availability, delivery type,
+     seller_rating, last_seen, listing_url.
+   - Cadence: targeted refresh every 15 minutes per active category with rate limits.
+   - Matching: normalized title + category; keep top 20 nearest matches per item.
+
+3) Sales history (account-owned)
+   - Source: FunPay order history endpoints and fulfillment status updates.
+   - Fields: order_id, listing_id, sale_price, currency, fees, refunds, buyer_id,
+     created_at, fulfilled_at, status.
+   - Cadence: incremental updates every 5 minutes; backfill 12 months on initial link.
+   - Cost basis: user-provided cost inputs per listing to compute net profit.
+
+KPIs and success criteria
+1) Price competitiveness
+   - Definition: share of active listings priced within target band vs competitor median.
+   - Formula: listings_within_band / total_active_listings.
+   - Band: within 2 percent of competitor median and not above lowest competitor by more than 1 percent.
+   - Target: at least 85 percent within band weekly, at least 95 percent within 5 percent monthly.
+
+2) Profit margin
+   - Definition: net margin after fees and refunds for completed orders.
+   - Formula: (sale_price - fees - refunds - cost_basis) / sale_price.
+   - Target: median margin at least 10 percent, 10th percentile at least 3 percent monthly.
+
+3) Time-to-update
+   - Definition: time from competitor price change or rule update to successful price write on FunPay.
+   - Formula: updated_at_on_funpay - trigger_detected_at.
+   - Target: p95 under 10 minutes, p99 under 30 minutes daily.
+
+4) Error rate
+   - Definition: failed syncs or price writes as a share of total attempts.
+   - Formula: failed_operations / total_operations.
+   - Target: under 0.5 percent daily, under 0.2 percent weekly for sync operations.

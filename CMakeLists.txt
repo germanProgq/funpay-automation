@@ -17,6 +17,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 option(FPV_BUILD_APP "Build the GTK application." ON)
 option(FPV_BUILD_VALORANT_CLIENT "Build the Valorant client app." ON)
 option(FPV_BUILD_TESTS "Build tests." ON)
+option(FPV_BUILD_TOOLS "Build helper tools." ON)
 
 include(GNUInstallDirs)
 
@@ -33,6 +34,10 @@ endif()
 if(FPV_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)
+endif()
+
+if(FPV_BUILD_TOOLS)
+  add_subdirectory(tools)
 endif()
 
 install(DIRECTORY locales DESTINATION ${CMAKE_INSTALL_DATADIR}/funpay_vertex)

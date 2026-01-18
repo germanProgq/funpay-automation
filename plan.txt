@@ -1,14 +1,20 @@
 Productionization plan for FunPayVertex
 
-Phase 0: Define product scope and success criteria
-- Document core user journeys (sign up, connect FunPay account, manage team, price items).
-- Define required data sources (FunPay inventory, competitor listings, sales history).
-- Define KPIs: price competitiveness, profit margin, time-to-update, error rate.
+Phase 0: Define product scope and success criteria (done)
+- Document core user journeys (sign up, connect FunPay account, manage team, price items). (done)
+- Define required data sources (FunPay inventory, competitor listings, sales history). (done)
+- Define KPIs: price competitiveness, profit margin, time-to-update, error rate. (done)
 
-Phase 1: Architecture and data model
-- Define multi-tenant schema: Account (FunPay), Organization, Team, User, Role.
-- Define catalog schema: Item, Listing, CompetitorListing, PriceRule, PriceHistory.
-- Define audit logs and data retention rules.
+Phase 1: Architecture and data model (done)
+- Define multi-tenant schema: Account (FunPay), Organization, Team, User, Role. (done)
+- Define catalog schema: Item, Listing, CompetitorListing, PriceRule, PriceHistory. (done)
+- Define audit logs and data retention rules. (done)
+
+Phase 1c: Database implementation (required) (done)
+- Pick primary datastore (Postgres recommended) and define migration tooling. (done)
+- Replace JSON file storage with DB-backed repositories/services. (done)
+- Add indexes for core queries (inventory lookup, price history, org/team scoping). (done)
+- Define backup/restore strategy and seed data for local dev. (done)
 
 Phase 1b: Product tiers and feature gating
 - Define tier entitlements and feature flags for Basic, Advanced, Ultimate.
@@ -16,11 +22,11 @@ Phase 1b: Product tiers and feature gating
 - Advanced includes all Basic plus: Full sales stats (charts); Net profit calculation and payout forecast; Top Customer Analytics (LTV); Review Analytics (reputation tracker); Mass Price Editor; Copy Lots Manager (account backups); Delete Lots (profile cleanup); Word Replacer (lot text replace); Stale Lot Detector; Status Manager.
 - Ultimate (Team) includes all Advanced plus: Auto Dumping (auto price decrease); AutoRobux GamePass; Steam AutoPoints; Auto Send (dialog broadcasts); Auto SMM (auto promotion); AI Reviews (smart replies); Manager system (staff access); Priority support.
 
-Phase 2: Authentication and onboarding
-- Implement user auth (email+password, SSO optional later).
-- Implement organization creation and FunPay account linking.
-- Add invite flow for teams and managers.
-- Add RBAC: Owner, Admin, Manager, Analyst, Viewer.
+Phase 2: Authentication and onboarding (done)
+- Implement user auth (email+password, SSO optional later). (done)
+- Implement organization creation and FunPay account linking. (done)
+- Add invite flow for teams and managers. (done)
+- Add RBAC: Owner, Admin, Manager, Analyst, Viewer. (done)
 
 Phase 3: Team and admin controls
 - Build admin panel for org settings, roles, and access reviews.
