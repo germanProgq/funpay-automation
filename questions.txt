@@ -1,7 +1,0 @@
-Purpose: Open questions for Phase 0 and Phase 1 implementation.
-
-1) Is there a preferred location or format for Phase 0 documentation beyond a standalone text file at the repo root?
-2) For Phase 1 data model, are listing status and delivery type intended to be fixed enumerations, and if so, what are the canonical values?
-3) What are the required default data retention periods for audit logs, price history, and competitor listings?
-4) The task references app.txt for the application description, but it is missing in the repo. Can you provide it or confirm the intended source?
-5) Are the default retention values used for organization setup acceptable (audit: 365 days, price history: 365 days, competitor listings: 90 days, orders: 365 days), or should they be adjusted?

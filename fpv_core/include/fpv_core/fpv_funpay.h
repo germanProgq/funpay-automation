@@ -16,6 +16,7 @@ extern "C" {
 #endif
 
 typedef struct fpv_logger fpv_logger_t;
+typedef struct fpv_event_bus fpv_event_bus_t;
 
 typedef enum fpv_funpay_error_code {
   FPV_FUNPAY_OK = 0,
@@ -51,6 +52,7 @@ typedef struct fpv_funpay_account_config {
   const char* golden_key;
   const char* user_agent;
   uint32_t timeout_ms;
+  const char* data_dir; /* Borrowed; used for DB-backed sessions. */
   fpv_funpay_proxy_config_t proxy;
 } fpv_funpay_account_config_t;
 
@@ -105,7 +107,8 @@ FPV_CORE_API fpv_funpay_account_t* fpv_funpay_account_create(
 FPV_CORE_API void fpv_funpay_account_set_logger(
     fpv_funpay_account_t* account,
     fpv_logger_t* logger,
-    bool debug_messages);
+    bool debug_messages,
+    fpv_event_bus_t* bus);
 FPV_CORE_API void fpv_funpay_account_destroy(fpv_funpay_account_t* account);
 FPV_CORE_API fpv_result_t fpv_funpay_account_refresh(
     fpv_funpay_account_t* account,
@@ -205,6 +208,19 @@ FPV_CORE_API fpv_result_t fpv_funpay_account_set_lot_active(
     fpv_funpay_account_t* account,
     uint64_t lot_id,
     bool active,
+    fpv_funpay_error_t* error);
+FPV_CORE_API fpv_result_t fpv_funpay_account_clone_lot(
+    fpv_funpay_account_t* account,
+    uint64_t lot_id,
+    const char* title,
+    const char* original_title,
+    uint64_t* out_lot_id,
+    fpv_funpay_error_t* error);
+FPV_CORE_API fpv_result_t fpv_funpay_account_clone_lot_from_url(
+    fpv_funpay_account_t* account,
+    const char* lot_url,
+    const char* title,
+    uint64_t* out_lot_id,
     fpv_funpay_error_t* error);
 FPV_CORE_API fpv_result_t fpv_funpay_account_get_lot_subcategories(
     fpv_funpay_account_t* account,

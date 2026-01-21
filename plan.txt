@@ -16,11 +16,11 @@ Phase 1c: Database implementation (required) (done)
 - Add indexes for core queries (inventory lookup, price history, org/team scoping). (done)
 - Define backup/restore strategy and seed data for local dev. (done)
 
-Phase 1b: Product tiers and feature gating
-- Define tier entitlements and feature flags for Basic, Advanced, Ultimate.
-- Basic (Starter) includes: Smart auto delivery 24/7 (files, multi-delivery); Auto lot bumping (cooldowns); Autoresponder with variables; Auto session recovery (Golden Key); Telegram notifications with action buttons; IPv4 proxy support; Buyer blacklist; Watermark; SRAS Monitor (hidden ban monitor); Auto Refund (rating protection); Feedback Reminder; Lot Cloner; Old Orders Scanner; Buyer Notes.
-- Advanced includes all Basic plus: Full sales stats (charts); Net profit calculation and payout forecast; Top Customer Analytics (LTV); Review Analytics (reputation tracker); Mass Price Editor; Copy Lots Manager (account backups); Delete Lots (profile cleanup); Word Replacer (lot text replace); Stale Lot Detector; Status Manager.
-- Ultimate (Team) includes all Advanced plus: Auto Dumping (auto price decrease); AutoRobux GamePass; Steam AutoPoints; Auto Send (dialog broadcasts); Auto SMM (auto promotion); AI Reviews (smart replies); Manager system (staff access); Priority support.
+Phase 1b: Product tiers and feature gating (done)
+- Define tier entitlements and feature flags for Basic, Advanced, Ultimate. (done)
+- Basic (Starter) includes: Smart auto delivery 24/7 (files, multi-delivery); Auto lot bumping (cooldowns); Autoresponder with variables; Auto session recovery (Golden Key); Telegram notifications with action buttons; IPv4 proxy support; Buyer blacklist; Watermark; SRAS Monitor (hidden ban monitor); Auto Refund (rating protection); Feedback Reminder; Lot Cloner; Old Orders Scanner; Buyer Notes. (done)
+- Advanced includes all Basic plus: Full sales stats (charts); Net profit calculation and payout forecast; Top Customer Analytics (LTV); Review Analytics (reputation tracker); Mass Price Editor; Copy Lots Manager (account backups); Delete Lots (profile cleanup); Word Replacer (lot text replace); Stale Lot Detector; Status Manager. (done)
+- Ultimate (Team) includes all Advanced plus: Auto Dumping (auto price decrease); AutoRobux GamePass; Steam AutoPoints; Auto Send (dialog broadcasts); Auto SMM (auto promotion); AI Reviews (smart replies); Manager system (staff access); Priority support. (done)
 
 Phase 2: Authentication and onboarding (done)
 - Implement user auth (email+password, SSO optional later). (done)
@@ -28,10 +28,10 @@ Phase 2: Authentication and onboarding (done)
 - Add invite flow for teams and managers. (done)
 - Add RBAC: Owner, Admin, Manager, Analyst, Viewer. (done)
 
-Phase 3: Team and admin controls
-- Build admin panel for org settings, roles, and access reviews.
-- Add per-team scopes for allowed categories, pricing rules, and alerts.
-- Add approval workflow for price changes (optional toggle).
+Phase 3: Team and admin controls (done)
+- Build admin panel for org settings, roles, and access reviews. (done)
+- Add per-team scopes for allowed categories, pricing rules, and alerts. (done)
+- Add approval workflow for price changes (optional toggle). (done)
 
 Phase 4: Data ingestion and deduping
 - Build ingestion pipeline for FunPay inventory and competitor data.

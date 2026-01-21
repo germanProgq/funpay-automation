@@ -27,3 +27,6 @@
 *.dSYM
 lending_site_server
 build_app/
+valorant_access_token.txt
+.env
+build_app_asan/

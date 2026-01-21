@@ -30,6 +30,22 @@ typedef struct fpv_identity_invite {
   char* created_by_user_id;
 } fpv_identity_invite_t;
 
+typedef struct fpv_access_member {
+  char* user_id;
+  char* email;
+  char* display_name;
+  bool active;
+  fpv_role_t role;
+  char* team_id;
+  char* team_name;
+  uint64_t assigned_at_ms;
+} fpv_access_member_t;
+
+typedef struct fpv_team_category_scope {
+  char* category;
+  char* subcategory;
+} fpv_team_category_scope_t;
+
 FPV_CORE_API fpv_identity_store_t* fpv_identity_store_open(
     const char* data_dir,
     fpv_result_t* out_result);
@@ -59,12 +75,18 @@ FPV_CORE_API fpv_result_t fpv_identity_create_organization(
     fpv_organization_t** out_organization,
     fpv_team_t** out_default_team,
     fpv_user_role_t** out_owner_role);
+FPV_CORE_API fpv_result_t fpv_identity_update_organization(
+    fpv_identity_store_t* store,
+    const fpv_organization_t* organization);
 FPV_CORE_API fpv_result_t fpv_identity_create_team(
     fpv_identity_store_t* store,
     const char* organization_id,
     const char* name,
     bool active,
     fpv_team_t** out_team);
+FPV_CORE_API fpv_result_t fpv_identity_update_team(
+    fpv_identity_store_t* store,
+    const fpv_team_t* team);
 FPV_CORE_API fpv_result_t fpv_identity_assign_role(
     fpv_identity_store_t* store,
     const char* user_id,
@@ -72,6 +94,22 @@ FPV_CORE_API fpv_result_t fpv_identity_assign_role(
     const char* team_id,
     fpv_role_t role,
     fpv_user_role_t** out_role);
+FPV_CORE_API fpv_result_t fpv_identity_update_role(
+    fpv_identity_store_t* store,
+    const char* user_id,
+    const char* organization_id,
+    const char* team_id,
+    fpv_role_t role);
+FPV_CORE_API fpv_result_t fpv_identity_remove_role(
+    fpv_identity_store_t* store,
+    const char* user_id,
+    const char* organization_id,
+    const char* team_id);
+FPV_CORE_API fpv_result_t fpv_identity_list_access_members(
+    const fpv_identity_store_t* store,
+    const char* organization_id,
+    fpv_access_member_t*** out_members,
+    size_t* out_count);
 
 FPV_CORE_API fpv_result_t fpv_identity_create_invite(
     fpv_identity_store_t* store,
@@ -93,6 +131,15 @@ FPV_CORE_API fpv_result_t fpv_identity_accept_invite(
     const char* user_id,
     fpv_identity_invite_t** out_invite,
     fpv_user_role_t** out_role);
+FPV_CORE_API fpv_result_t fpv_identity_list_invites(
+    const fpv_identity_store_t* store,
+    const char* organization_id,
+    bool include_accepted,
+    fpv_identity_invite_t*** out_invites,
+    size_t* out_count);
+FPV_CORE_API fpv_result_t fpv_identity_revoke_invite(
+    fpv_identity_store_t* store,
+    const char* invite_id);
 
 FPV_CORE_API fpv_result_t fpv_identity_link_account(
     fpv_identity_store_t* store,
@@ -125,6 +172,75 @@ FPV_CORE_API fpv_result_t fpv_identity_list_teams(
     const char* organization_id,
     fpv_team_t*** out_teams,
     size_t* out_count);
+FPV_CORE_API fpv_result_t fpv_identity_list_team_category_scopes(
+    const fpv_identity_store_t* store,
+    const char* team_id,
+    fpv_team_category_scope_t*** out_scopes,
+    size_t* out_count);
+FPV_CORE_API fpv_result_t fpv_identity_replace_team_category_scopes(
+    fpv_identity_store_t* store,
+    const char* team_id,
+    const fpv_team_category_scope_t* const* scopes,
+    size_t count);
+FPV_CORE_API fpv_result_t fpv_identity_list_team_price_scopes(
+    const fpv_identity_store_t* store,
+    const char* team_id,
+    fpv_price_rule_scope_t** out_scopes,
+    size_t* out_count);
+FPV_CORE_API fpv_result_t fpv_identity_replace_team_price_scopes(
+    fpv_identity_store_t* store,
+    const char* team_id,
+    const fpv_price_rule_scope_t* scopes,
+    size_t count);
+FPV_CORE_API fpv_result_t fpv_identity_list_team_alert_scopes(
+    const fpv_identity_store_t* store,
+    const char* team_id,
+    char*** out_alerts,
+    size_t* out_count);
+FPV_CORE_API fpv_result_t fpv_identity_replace_team_alert_scopes(
+    fpv_identity_store_t* store,
+    const char* team_id,
+    const char* const* alerts,
+    size_t count);
+FPV_CORE_API fpv_result_t fpv_identity_get_latest_access_review(
+    const fpv_identity_store_t* store,
+    const char* organization_id,
+    fpv_access_review_t** out_review);
+FPV_CORE_API fpv_result_t fpv_identity_record_access_review(
+    fpv_identity_store_t* store,
+    const char* organization_id,
+    const char* reviewer_user_id,
+    const char* note,
+    fpv_access_review_t** out_review);
+FPV_CORE_API fpv_result_t fpv_identity_create_price_change_request(
+    fpv_identity_store_t* store,
+    const char* organization_id,
+    const char* team_id,
+    const char* listing_id,
+    const char* price_rule_id,
+    const char* requested_by_user_id,
+    double current_price,
+    double requested_price,
+    const char* currency,
+    const char* reason,
+    fpv_price_change_request_t** out_request);
+FPV_CORE_API fpv_result_t fpv_identity_list_price_change_requests(
+    const fpv_identity_store_t* store,
+    const char* organization_id,
+    fpv_price_change_status_t status_filter,
+    fpv_price_change_request_t*** out_requests,
+    size_t* out_count);
+FPV_CORE_API fpv_result_t fpv_identity_review_price_change_request(
+    fpv_identity_store_t* store,
+    const char* request_id,
+    fpv_price_change_status_t decision,
+    const char* reviewer_user_id,
+    const char* review_note,
+    fpv_price_change_request_t** out_request);
+FPV_CORE_API fpv_result_t fpv_identity_mark_price_change_applied(
+    fpv_identity_store_t* store,
+    const char* request_id,
+    fpv_price_change_request_t** out_request);
 
 FPV_CORE_API fpv_result_t fpv_identity_resolve_user_context(
     const fpv_identity_store_t* store,
@@ -142,6 +258,18 @@ FPV_CORE_API bool fpv_identity_user_has_role(
 FPV_CORE_API void fpv_identity_invite_destroy(fpv_identity_invite_t* invite);
 FPV_CORE_API void fpv_identity_invite_list_destroy(
     fpv_identity_invite_t** invites,
+    size_t count);
+FPV_CORE_API void fpv_identity_access_member_list_destroy(
+    fpv_access_member_t** members,
+    size_t count);
+FPV_CORE_API void fpv_identity_team_category_scope_list_destroy(
+    fpv_team_category_scope_t** scopes,
+    size_t count);
+FPV_CORE_API void fpv_identity_string_list_destroy(
+    char** items,
+    size_t count);
+FPV_CORE_API void fpv_identity_price_change_request_list_destroy(
+    fpv_price_change_request_t** requests,
     size_t count);
 
 #ifdef __cplusplus

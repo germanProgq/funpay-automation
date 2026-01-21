@@ -1,8 +1,36 @@
-version: '3.3'
-
 services:
+  fpv-db:
+    image: postgres:16
+    container_name: fpv-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fpv_valorant
+      POSTGRES_USER: fpv
+      POSTGRES_PASSWORD: fpv_password
+    ports:
+      - "5433:5433"
+    volumes:
+      - fpv_db_data:/var/lib/postgresql/data
+
   funpay:
-    build: ./
-    container_name: funpay-vertex 
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    container_name: funpay-vertex
     restart: unless-stopped
     tty: true
+    stdin_open: true
+    depends_on:
+      - fpv-db
+    volumes:
+      - ./:/workspace:cached
+      - fpv_build_cache:/workspace/build-docker
+    environment:
+      FPV_BUILD_DIR: /workspace/build-docker
+      FPV_BUILD_TYPE: Debug
+      FPV_TARGETS: fpv_app valorant_client
+      FPV_DB_URL: postgres://fpv:fpv_password@fpv-db:5433/fpv_valorant
+
+volumes:
+  fpv_db_data:
+  fpv_build_cache:

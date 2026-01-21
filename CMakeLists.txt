@@ -14,6 +14,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+if(UNIX AND NOT APPLE)
+  add_compile_definitions(_POSIX_C_SOURCE=200809L)
+endif()
+
 option(FPV_BUILD_APP "Build the GTK application." ON)
 option(FPV_BUILD_VALORANT_CLIENT "Build the Valorant client app." ON)
 option(FPV_BUILD_TESTS "Build tests." ON)

@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "fpv_entitlements.h"
 #include "fpv_export.h"
 
 #ifdef __cplusplus
@@ -54,6 +55,14 @@ typedef enum fpv_price_undercut_type {
   FPV_UNDERCUT_ABSOLUTE = 1,
   FPV_UNDERCUT_PERCENT = 2
 } fpv_price_undercut_type_t;
+
+typedef enum fpv_price_change_status {
+  FPV_PRICE_CHANGE_ANY = -1,
+  FPV_PRICE_CHANGE_PENDING = 0,
+  FPV_PRICE_CHANGE_APPROVED = 1,
+  FPV_PRICE_CHANGE_REJECTED = 2,
+  FPV_PRICE_CHANGE_APPLIED = 3
+} fpv_price_change_status_t;
 
 typedef struct fpv_data_retention_policy {
   uint32_t audit_log_days;
@@ -140,7 +149,9 @@ typedef struct fpv_organization {
   char* name;
   char* timezone;
   char* currency;
+  fpv_product_tier_t tier;
   fpv_data_retention_policy_t retention;
+  bool price_change_approval_required;
   uint64_t created_at_ms;
   uint64_t updated_at_ms;
 } fpv_organization_t;
@@ -258,6 +269,25 @@ typedef struct fpv_price_history {
   uint64_t created_at_ms;
 } fpv_price_history_t;
 
+typedef struct fpv_price_change_request {
+  char* id;
+  char* organization_id;
+  char* team_id;
+  char* listing_id;
+  char* price_rule_id;
+  char* requested_by_user_id;
+  double current_price;
+  double requested_price;
+  char* currency;
+  char* reason;
+  fpv_price_change_status_t status;
+  char* reviewed_by_user_id;
+  char* review_note;
+  uint64_t requested_at_ms;
+  uint64_t reviewed_at_ms;
+  uint64_t applied_at_ms;
+} fpv_price_change_request_t;
+
 typedef struct fpv_audit_log_entry {
   char* id;
   char* organization_id;
@@ -274,6 +304,14 @@ typedef struct fpv_audit_log_entry {
   char* user_agent;
   uint64_t created_at_ms;
 } fpv_audit_log_entry_t;
+
+typedef struct fpv_access_review {
+  char* id;
+  char* organization_id;
+  char* reviewer_user_id;
+  char* note;
+  uint64_t reviewed_at_ms;
+} fpv_access_review_t;
 
 FPV_CORE_API fpv_user_profile_t* fpv_user_profile_create(
     const char* id,
@@ -362,7 +400,9 @@ FPV_CORE_API fpv_organization_t* fpv_organization_create(
     const char* name,
     const char* timezone,
     const char* currency,
+    fpv_product_tier_t tier,
     const fpv_data_retention_policy_t* retention,
+    bool price_change_approval_required,
     uint64_t created_at_ms,
     uint64_t updated_at_ms);
 FPV_CORE_API fpv_organization_t* fpv_organization_clone(
@@ -496,6 +536,28 @@ FPV_CORE_API fpv_price_history_t* fpv_price_history_clone(
     const fpv_price_history_t* history);
 FPV_CORE_API void fpv_price_history_destroy(fpv_price_history_t* history);
 
+FPV_CORE_API fpv_price_change_request_t* fpv_price_change_request_create(
+    const char* id,
+    const char* organization_id,
+    const char* team_id,
+    const char* listing_id,
+    const char* price_rule_id,
+    const char* requested_by_user_id,
+    double current_price,
+    double requested_price,
+    const char* currency,
+    const char* reason,
+    fpv_price_change_status_t status,
+    const char* reviewed_by_user_id,
+    const char* review_note,
+    uint64_t requested_at_ms,
+    uint64_t reviewed_at_ms,
+    uint64_t applied_at_ms);
+FPV_CORE_API fpv_price_change_request_t* fpv_price_change_request_clone(
+    const fpv_price_change_request_t* request);
+FPV_CORE_API void fpv_price_change_request_destroy(
+    fpv_price_change_request_t* request);
+
 FPV_CORE_API fpv_audit_log_entry_t* fpv_audit_log_entry_create(
     const char* id,
     const char* organization_id,
@@ -515,6 +577,16 @@ FPV_CORE_API fpv_audit_log_entry_t* fpv_audit_log_entry_clone(
     const fpv_audit_log_entry_t* entry);
 FPV_CORE_API void fpv_audit_log_entry_destroy(
     fpv_audit_log_entry_t* entry);
+
+FPV_CORE_API fpv_access_review_t* fpv_access_review_create(
+    const char* id,
+    const char* organization_id,
+    const char* reviewer_user_id,
+    const char* note,
+    uint64_t reviewed_at_ms);
+FPV_CORE_API fpv_access_review_t* fpv_access_review_clone(
+    const fpv_access_review_t* review);
+FPV_CORE_API void fpv_access_review_destroy(fpv_access_review_t* review);
 
 #ifdef __cplusplus
 }

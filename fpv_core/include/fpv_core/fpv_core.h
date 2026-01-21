@@ -56,6 +56,17 @@ FPV_CORE_API fpv_result_t fpv_core_set_lot_active(
     fpv_core_t* core,
     uint64_t lot_id,
     bool active);
+FPV_CORE_API fpv_result_t fpv_core_clone_lot(
+    fpv_core_t* core,
+    uint64_t lot_id,
+    const char* title,
+    const char* original_title,
+    uint64_t* out_lot_id);
+FPV_CORE_API fpv_result_t fpv_core_clone_lot_from_url(
+    fpv_core_t* core,
+    const char* lot_url,
+    const char* title,
+    uint64_t* out_lot_id);
 
 #ifdef __cplusplus
 }

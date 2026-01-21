@@ -7,6 +7,11 @@ add_executable(fpv_core_unit_tests
 target_include_directories(fpv_core_unit_tests PRIVATE
   ${CMAKE_SOURCE_DIR}/fpv_core/include
   ${CMAKE_SOURCE_DIR}/fpv_core/src
+  ${CMAKE_SOURCE_DIR}/fpv_core/src/core
+  ${CMAKE_SOURCE_DIR}/fpv_core/src/features
+  ${CMAKE_SOURCE_DIR}/fpv_core/src/funpay
+  ${CMAKE_SOURCE_DIR}/fpv_core/src/identity
+  ${CMAKE_SOURCE_DIR}/fpv_core/src/telegram
 )
 
 target_compile_definitions(fpv_core_unit_tests PRIVATE
@@ -25,6 +30,11 @@ add_executable(fpv_core_integration_tests
 target_include_directories(fpv_core_integration_tests PRIVATE
   ${CMAKE_SOURCE_DIR}/fpv_core/include
   ${CMAKE_SOURCE_DIR}/fpv_core/src
+  ${CMAKE_SOURCE_DIR}/fpv_core/src/core
+  ${CMAKE_SOURCE_DIR}/fpv_core/src/features
+  ${CMAKE_SOURCE_DIR}/fpv_core/src/funpay
+  ${CMAKE_SOURCE_DIR}/fpv_core/src/identity
+  ${CMAKE_SOURCE_DIR}/fpv_core/src/telegram
 )
 
 target_compile_definitions(fpv_core_integration_tests PRIVATE

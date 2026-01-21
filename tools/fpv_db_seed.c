@@ -9,8 +9,10 @@
 
 #include "fpv_core/fpv_identity.h"
 #include "fpv_core/fpv_models.h"
-#include "fpv_db.h"
-#include "fpv_time.h"
+#include "core/data/fpv_db.h"
+
+#include "core/base/fpv_time.h"
+
 
 typedef struct fpv_seed_item {
   const char* title;

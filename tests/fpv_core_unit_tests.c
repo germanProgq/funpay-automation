@@ -17,11 +17,16 @@
 #include "fpv_core/fpv_identity.h"
 #include "fpv_core/fpv_ini.h"
 #include "fpv_core/fpv_types.h"
-#include "fpv_db.h"
-#include "fpv_json.h"
-#include "fpv_localization.h"
-#include "fpv_string.h"
-#include "fpv_time.h"
+#include "core/data/fpv_db.h"
+
+#include "core/data/fpv_json.h"
+
+#include "core/app/fpv_localization.h"
+
+#include "core/base/fpv_string.h"
+
+#include "core/base/fpv_time.h"
+
 
 typedef struct fpv_test_case {
   const char* name;
@@ -387,6 +392,21 @@ static bool test_identity_flow(void) {
   ok = ok && fpv_test_expect(result == FPV_OK && org && team && role,
                              "organization create failed");
 
+  if (org) {
+    fpv_organization_t tier_update;
+    memset(&tier_update, 0, sizeof(tier_update));
+    tier_update.id = org->id;
+    tier_update.name = org->name;
+    tier_update.timezone = org->timezone;
+    tier_update.currency = org->currency;
+    tier_update.retention = org->retention;
+    tier_update.price_change_approval_required =
+        org->price_change_approval_required;
+    tier_update.tier = FPV_TIER_ULTIMATE;
+    result = fpv_identity_update_organization(store, &tier_update);
+    ok = ok && fpv_test_expect(result == FPV_OK, "org tier update failed");
+  }
+
   fpv_identity_invite_t* invite = NULL;
   char* token = NULL;
   result = fpv_identity_create_invite(
@@ -487,7 +507,9 @@ static bool test_phase1_models_audit(void) {
       "Acme",
       "UTC",
       "USD",
+      FPV_TIER_BASIC,
       &retention,
+      false,
       100,
       200);
   if (!fpv_test_expect(organization != NULL, "organization create failed")) {
@@ -634,6 +656,370 @@ static bool test_phase1_models_audit(void) {
   return ok;
 }
 
+static bool test_phase3_admin_controls(void) {
+  bool ok = true;
+  char* dir = fpv_test_create_temp_dir("fpvphase3");
+  ok = ok && fpv_test_expect(dir != NULL, "temp dir creation failed");
+  if (!dir) {
+    return false;
+  }
+
+  fpv_result_t result = FPV_OK;
+  fpv_identity_store_t* store = fpv_identity_store_open(dir, &result);
+  ok = ok && fpv_test_expect(store != NULL, "identity store open failed");
+  if (!store) {
+    fpv_test_remove_dir(dir);
+    fpv_free(dir);
+    return false;
+  }
+
+  fpv_user_t* owner = NULL;
+  result = fpv_identity_create_user(
+      store,
+      "owner2@example.com",
+      "Owner Two",
+      "Password123",
+      true,
+      &owner);
+  ok = ok && fpv_test_expect(result == FPV_OK && owner, "owner create failed");
+
+  fpv_organization_t* org = NULL;
+  fpv_team_t* default_team = NULL;
+  fpv_user_role_t* owner_role = NULL;
+  result = fpv_identity_create_organization(
+      store,
+      "Acme Two",
+      "UTC",
+      "USD",
+      NULL,
+      owner ? owner->id : NULL,
+      &org,
+      &default_team,
+      &owner_role);
+  ok = ok && fpv_test_expect(result == FPV_OK && org, "org create failed");
+
+  fpv_organization_t updated;
+  memset(&updated, 0, sizeof(updated));
+  updated.id = org ? org->id : NULL;
+  updated.name = "Acme Updated";
+  updated.timezone = "Europe/Moscow";
+  updated.currency = "EUR";
+  updated.retention.audit_log_days = 90;
+  updated.retention.price_history_days = 180;
+  updated.retention.competitor_listing_days = 60;
+  updated.retention.order_history_days = 365;
+  updated.price_change_approval_required = true;
+  updated.tier = FPV_TIER_ULTIMATE;
+  result = fpv_identity_update_organization(store, &updated);
+  ok = ok && fpv_test_expect(result == FPV_OK, "org update failed");
+
+  fpv_organization_t* org_check = NULL;
+  result = fpv_identity_get_organization(store, org ? org->id : NULL, &org_check);
+  ok = ok && fpv_test_expect(result == FPV_OK && org_check, "org get failed");
+  ok = ok && fpv_test_expect(org_check && org_check->price_change_approval_required,
+                             "org approval flag mismatch");
+  ok = ok && fpv_test_expect(org_check && org_check->retention.audit_log_days == 90,
+                             "org retention update mismatch");
+  fpv_organization_destroy(org_check);
+
+  fpv_team_t* team = NULL;
+  result = fpv_identity_create_team(
+      store,
+      org ? org->id : NULL,
+      "Ops",
+      true,
+      &team);
+  ok = ok && fpv_test_expect(result == FPV_OK && team, "team create failed");
+
+  fpv_team_t team_update;
+  memset(&team_update, 0, sizeof(team_update));
+  team_update.id = team ? team->id : NULL;
+  team_update.organization_id = org ? org->id : NULL;
+  team_update.name = "Ops North";
+  team_update.active = false;
+  result = fpv_identity_update_team(store, &team_update);
+  ok = ok && fpv_test_expect(result == FPV_OK, "team update failed");
+
+  fpv_team_t* team_check = NULL;
+  result = fpv_identity_get_team(store, team ? team->id : NULL, &team_check);
+  ok = ok && fpv_test_expect(result == FPV_OK && team_check, "team get failed");
+  ok = ok && fpv_test_expect(team_check && !team_check->active, "team active mismatch");
+  fpv_team_destroy(team_check);
+
+  fpv_user_t* member = NULL;
+  result = fpv_identity_create_user(
+      store,
+      "member@example.com",
+      "Member",
+      "Password123",
+      true,
+      &member);
+  ok = ok && fpv_test_expect(result == FPV_OK && member, "member create failed");
+
+  fpv_user_role_t* role = NULL;
+  result = fpv_identity_assign_role(
+      store,
+      member ? member->id : NULL,
+      org ? org->id : NULL,
+      team ? team->id : NULL,
+      FPV_ROLE_MANAGER,
+      &role);
+  ok = ok && fpv_test_expect(result == FPV_OK && role, "role assign failed");
+
+  result = fpv_identity_update_role(
+      store,
+      member ? member->id : NULL,
+      org ? org->id : NULL,
+      team ? team->id : NULL,
+      FPV_ROLE_ANALYST);
+  ok = ok && fpv_test_expect(result == FPV_OK, "role update failed");
+
+  fpv_access_member_t** members = NULL;
+  size_t member_count = 0;
+  result = fpv_identity_list_access_members(
+      store,
+      org ? org->id : NULL,
+      &members,
+      &member_count);
+  ok = ok && fpv_test_expect(result == FPV_OK && member_count >= 2,
+                             "access members list failed");
+  fpv_identity_access_member_list_destroy(members, member_count);
+
+  result = fpv_identity_remove_role(
+      store,
+      member ? member->id : NULL,
+      org ? org->id : NULL,
+      team ? team->id : NULL);
+  ok = ok && fpv_test_expect(result == FPV_OK, "role remove failed");
+
+  fpv_team_category_scope_t scope1 = {"Games", "Skins"};
+  fpv_team_category_scope_t scope2 = {"Services", NULL};
+  fpv_team_category_scope_t* scopes[] = {&scope1, &scope2};
+  result = fpv_identity_replace_team_category_scopes(
+      store,
+      team ? team->id : NULL,
+      (const fpv_team_category_scope_t* const*)scopes,
+      2);
+  ok = ok && fpv_test_expect(result == FPV_OK, "category scopes replace failed");
+
+  fpv_team_category_scope_t** loaded_scopes = NULL;
+  size_t loaded_scope_count = 0;
+  result = fpv_identity_list_team_category_scopes(
+      store,
+      team ? team->id : NULL,
+      &loaded_scopes,
+      &loaded_scope_count);
+  ok = ok && fpv_test_expect(result == FPV_OK && loaded_scope_count == 2,
+                             "category scopes list failed");
+  fpv_identity_team_category_scope_list_destroy(loaded_scopes, loaded_scope_count);
+
+  fpv_price_rule_scope_t price_scopes[] = {
+      FPV_PRICE_SCOPE_ORGANIZATION,
+      FPV_PRICE_SCOPE_LISTING};
+  result = fpv_identity_replace_team_price_scopes(
+      store,
+      team ? team->id : NULL,
+      price_scopes,
+      2);
+  ok = ok && fpv_test_expect(result == FPV_OK, "price scopes replace failed");
+
+  fpv_price_rule_scope_t* price_scopes_out = NULL;
+  size_t price_scope_count = 0;
+  result = fpv_identity_list_team_price_scopes(
+      store,
+      team ? team->id : NULL,
+      &price_scopes_out,
+      &price_scope_count);
+  ok = ok && fpv_test_expect(result == FPV_OK && price_scope_count == 2,
+                             "price scopes list failed");
+  fpv_free(price_scopes_out);
+
+  const char* alert_scopes[] = {"price_conflict", "margin_risk"};
+  result = fpv_identity_replace_team_alert_scopes(
+      store,
+      team ? team->id : NULL,
+      alert_scopes,
+      2);
+  ok = ok && fpv_test_expect(result == FPV_OK, "alert scopes replace failed");
+
+  char** alert_scopes_out = NULL;
+  size_t alert_scope_count = 0;
+  result = fpv_identity_list_team_alert_scopes(
+      store,
+      team ? team->id : NULL,
+      &alert_scopes_out,
+      &alert_scope_count);
+  ok = ok && fpv_test_expect(result == FPV_OK && alert_scope_count == 2,
+                             "alert scopes list failed");
+  fpv_identity_string_list_destroy(alert_scopes_out, alert_scope_count);
+
+  fpv_access_review_t* review = NULL;
+  result = fpv_identity_record_access_review(
+      store,
+      org ? org->id : NULL,
+      owner ? owner->id : NULL,
+      "Quarterly review",
+      &review);
+  ok = ok && fpv_test_expect(result == FPV_OK && review, "access review record failed");
+  fpv_access_review_destroy(review);
+
+  fpv_access_review_t* latest = NULL;
+  result = fpv_identity_get_latest_access_review(
+      store,
+      org ? org->id : NULL,
+      &latest);
+  ok = ok && fpv_test_expect(result == FPV_OK && latest, "access review fetch failed");
+  fpv_access_review_destroy(latest);
+
+  fpv_account_t* account = NULL;
+  result = fpv_identity_link_account(
+      store,
+      org ? org->id : NULL,
+      team ? team->id : NULL,
+      "fpv-user",
+      "fpv_user",
+      "FPV User",
+      "USD",
+      &account);
+  ok = ok && fpv_test_expect(result == FPV_OK && account, "account link failed");
+
+  fpv_db_config_t config;
+  memset(&config, 0, sizeof(config));
+  config.data_dir = dir;
+  fpv_db_t* db = NULL;
+  result = fpv_db_open(&config, &db);
+  ok = ok && fpv_test_expect(result == FPV_OK && db, "db open failed");
+  if (result == FPV_OK && db) {
+    fpv_db_migrate(db);
+    uint64_t now_ms = fpv_time_now_ms();
+    char now_buf[32];
+    snprintf(now_buf, sizeof(now_buf), "%llu", (unsigned long long)now_ms);
+    const char* item_params[] = {
+        "item-1",
+        org ? org->id : NULL,
+        "Item",
+        "item",
+        "Category",
+        "Sub",
+        "Desc",
+        now_buf,
+        now_buf};
+    fpv_db_exec_params(
+        db,
+        "INSERT INTO fpv_items (id, organization_id, title, normalized_title, "
+        "category, subcategory, description, created_at_ms, updated_at_ms) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);",
+        item_params,
+        9);
+    const char* listing_params[] = {
+        "listing-1",
+        "item-1",
+        account ? account->id : NULL,
+        "Listing",
+        "Category",
+        "Sub",
+        "active",
+        "10.00",
+        "USD",
+        "5",
+        "digital",
+        now_buf,
+        "Desc"};
+    fpv_db_exec_params(
+        db,
+        "INSERT INTO fpv_listings (id, item_id, account_id, title, category, "
+        "subcategory, status, price, currency, quantity, delivery_type, "
+        "last_updated_ms, description) VALUES "
+        "($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);",
+        listing_params,
+        13);
+    fpv_db_close(db);
+  }
+
+  fpv_price_change_request_t* request = NULL;
+  result = fpv_identity_create_price_change_request(
+      store,
+      org ? org->id : NULL,
+      team ? team->id : NULL,
+      "listing-1",
+      NULL,
+      owner ? owner->id : NULL,
+      10.0,
+      9.0,
+      "USD",
+      "undercut",
+      &request);
+  ok = ok && fpv_test_expect(result == FPV_OK && request,
+                             "price change request create failed");
+  char* request_id = request && request->id ? fpv_strdup(request->id) : NULL;
+  fpv_price_change_request_destroy(request);
+
+  fpv_price_change_request_t** pending = NULL;
+  size_t pending_count = 0;
+  result = fpv_identity_list_price_change_requests(
+      store,
+      org ? org->id : NULL,
+      FPV_PRICE_CHANGE_PENDING,
+      &pending,
+      &pending_count);
+  ok = ok && fpv_test_expect(result == FPV_OK && pending_count == 1,
+                             "pending price change list failed");
+  fpv_identity_price_change_request_list_destroy(pending, pending_count);
+
+  fpv_price_change_request_t* approved = NULL;
+  result = fpv_identity_review_price_change_request(
+      store,
+      request_id,
+      FPV_PRICE_CHANGE_APPROVED,
+      owner ? owner->id : NULL,
+      NULL,
+      &approved);
+  ok = ok && fpv_test_expect(result == FPV_OK && approved &&
+                             approved->status == FPV_PRICE_CHANGE_APPROVED,
+                             "price change approve failed");
+  fpv_price_change_request_destroy(approved);
+
+  fpv_price_change_request_t* applied = NULL;
+  result = fpv_identity_mark_price_change_applied(
+      store,
+      request_id,
+      &applied);
+  ok = ok && fpv_test_expect(result == FPV_OK && applied &&
+                             applied->status == FPV_PRICE_CHANGE_APPLIED,
+                             "price change apply failed");
+  fpv_price_change_request_destroy(applied);
+
+  fpv_free(request_id);
+  fpv_account_destroy(account);
+  fpv_user_role_destroy(role);
+  fpv_user_destroy(member);
+  fpv_user_destroy(owner);
+  fpv_organization_destroy(org);
+  fpv_team_destroy(team);
+  fpv_team_destroy(default_team);
+  fpv_user_role_destroy(owner_role);
+
+  fpv_identity_store_destroy(store);
+  char* path = fpv_test_join_path(dir, "fpv.db");
+  if (path) {
+    fpv_test_remove_file(path);
+    fpv_free(path);
+  }
+  char* wal_path = fpv_test_join_path(dir, "fpv.db-wal");
+  if (wal_path) {
+    fpv_test_remove_file(wal_path);
+    fpv_free(wal_path);
+  }
+  char* shm_path = fpv_test_join_path(dir, "fpv.db-shm");
+  if (shm_path) {
+    fpv_test_remove_file(shm_path);
+    fpv_free(shm_path);
+  }
+  fpv_test_remove_dir(dir);
+  fpv_free(dir);
+  return ok;
+}
+
 static int fpv_run_tests(const fpv_test_case_t* tests, size_t count) {
   int failed = 0;
   for (size_t i = 0; i < count; i++) {
@@ -656,6 +1042,7 @@ int main(void) {
       {"event_bus", test_event_bus},
       {"identity_flow", test_identity_flow},
       {"phase1_models_audit", test_phase1_models_audit},
+      {"phase3_admin_controls", test_phase3_admin_controls},
   };
   return fpv_run_tests(tests, sizeof(tests) / sizeof(tests[0]));
 }

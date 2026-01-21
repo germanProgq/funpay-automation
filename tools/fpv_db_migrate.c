@@ -4,7 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "fpv_db.h"
+#include "core/data/fpv_db.h"
+
 
 static void fpv_db_migrate_usage(const char* name) {
   fprintf(

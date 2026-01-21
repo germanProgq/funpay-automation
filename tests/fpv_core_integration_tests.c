@@ -16,9 +16,12 @@
 #include "fpv_core/fpv_models.h"
 #include "fpv_core/fpv_storage.h"
 #include "fpv_core/fpv_types.h"
-#include "fpv_funpay_http.h"
-#include "fpv_telegram.h"
-#include "fpv_string.h"
+#include "funpay/http/fpv_funpay_http.h"
+
+#include "telegram/core/fpv_telegram.h"
+
+#include "core/base/fpv_string.h"
+
 
 typedef struct fpv_test_case {
   const char* name;
