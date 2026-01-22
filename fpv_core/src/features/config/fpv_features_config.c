@@ -85,7 +85,7 @@ fpv_result_t fpv_features_apply_settings(
 
   state->flags.auto_raise = settings->auto_raise && allow_auto_raise;
   state->flags.auto_response = settings->auto_response && allow_auto_response;
-  state->flags.auto_delivery = settings->auto_delivery && allow_auto_delivery;
+  state->flags.auto_delivery = allow_auto_delivery;
   state->flags.multi_delivery =
       settings->multi_delivery && allow_auto_delivery && allow_multi_delivery;
   state->flags.auto_restore =

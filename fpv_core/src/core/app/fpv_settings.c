@@ -86,7 +86,6 @@ static void fpv_settings_apply_entitlements(fpv_settings_t* settings) {
     settings->order_confirm_send_reply = false;
   }
   if (!fpv_feature_mask_has(mask, FPV_FEATURE_AUTO_DELIVERY)) {
-    settings->auto_delivery = false;
     settings->multi_delivery = false;
     settings->auto_restore = false;
     settings->auto_disable = false;
@@ -199,7 +198,6 @@ fpv_result_t fpv_settings_load(const char* path, fpv_settings_t* settings) {
   const char* watermark = NULL;
   const char* auto_raise = NULL;
   const char* auto_response = NULL;
-  const char* auto_delivery = NULL;
   const char* multi_delivery = NULL;
   const char* auto_restore = NULL;
   const char* auto_disable = NULL;
@@ -237,7 +235,6 @@ fpv_result_t fpv_settings_load(const char* path, fpv_settings_t* settings) {
   user_agent = fpv_ini_get(ini, "FunPay", "user_agent");
   auto_raise = fpv_ini_get(ini, "FunPay", "autoRaise");
   auto_response = fpv_ini_get(ini, "FunPay", "autoResponse");
-  auto_delivery = fpv_ini_get(ini, "FunPay", "autoDelivery");
   multi_delivery = fpv_ini_get(ini, "FunPay", "multiDelivery");
   auto_restore = fpv_ini_get(ini, "FunPay", "autoRestore");
   auto_disable = fpv_ini_get(ini, "FunPay", "autoDisable");
@@ -355,9 +352,6 @@ fpv_result_t fpv_settings_load(const char* path, fpv_settings_t* settings) {
   }
   if (auto_response && auto_response[0]) {
     fpv_parse_bool(auto_response, &settings->auto_response);
-  }
-  if (auto_delivery && auto_delivery[0]) {
-    fpv_parse_bool(auto_delivery, &settings->auto_delivery);
   }
   if (multi_delivery && multi_delivery[0]) {
     fpv_parse_bool(multi_delivery, &settings->multi_delivery);

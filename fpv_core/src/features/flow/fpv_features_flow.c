@@ -2016,6 +2016,7 @@ static void fpv_features_handle_order(
   bool lot_disable_multi_delivery = false;
   bool lot_timed = false;
   uint32_t lot_timer_hours = 0;
+  uint32_t lot_multi_delivery_count = 0;
   char* lot_response = NULL;
   char* lot_products_file = NULL;
   char* lot_config_name = NULL;
@@ -2029,6 +2030,7 @@ static void fpv_features_handle_order(
     lot_disable_multi_delivery = lot->disable_multi_delivery;
     lot_timed = lot->timed;
     lot_timer_hours = lot->timer_hours;
+    lot_multi_delivery_count = lot->multi_delivery_count;
     if (lot->response) {
       lot_response = fpv_strdup(lot->response);
     }
@@ -2199,7 +2201,11 @@ static void fpv_features_handle_order(
   if (lot_products_file && lot_products_file[0] && state->products_dir) {
     uint32_t amount = 1;
     if (state->flags.multi_delivery && !lot_disable_multi_delivery) {
-      amount = fpv_parse_order_amount(order_title);
+      if (lot_multi_delivery_count > 0) {
+        amount = lot_multi_delivery_count;
+      } else {
+        amount = fpv_parse_order_amount(order_title);
+      }
     }
     products_path = fpv_path_join(state->products_dir, lot_products_file);
     if (!products_path) {

@@ -27,6 +27,7 @@ typedef struct fpv_auto_delivery_lot {
   char* products_file;
   bool timed;
   uint32_t timer_hours;
+  uint32_t multi_delivery_count;
   bool disable;
   bool disable_auto_restore;
   bool disable_auto_disable;

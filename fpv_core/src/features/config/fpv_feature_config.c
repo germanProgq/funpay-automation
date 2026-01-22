@@ -295,6 +295,7 @@ static fpv_result_t fpv_auto_delivery_append(
     const char* products_file,
     bool timed,
     uint32_t timer_hours,
+    uint32_t multi_delivery_count,
     bool disable,
     bool disable_auto_restore,
     bool disable_auto_disable,
@@ -316,6 +317,7 @@ static fpv_result_t fpv_auto_delivery_append(
   }
   entry->timed = timed;
   entry->timer_hours = timer_hours;
+  entry->multi_delivery_count = multi_delivery_count;
   entry->disable = disable;
   entry->disable_auto_restore = disable_auto_restore;
   entry->disable_auto_disable = disable_auto_disable;
@@ -382,6 +384,20 @@ fpv_result_t fpv_auto_delivery_config_load(
         return FPV_ERR_PARSE;
       }
       timer_hours = (uint32_t)parsed;
+    }
+
+    const char* multi_delivery_count_value =
+        fpv_ini_get(ini, section, "multiDeliveryCount");
+    uint32_t multi_delivery_count = 0;
+    if (multi_delivery_count_value && multi_delivery_count_value[0]) {
+      char* end = NULL;
+      unsigned long parsed = strtoul(multi_delivery_count_value, &end, 10);
+      if (!end || *end != '\0' || parsed == 0 || parsed > UINT32_MAX) {
+        fpv_auto_delivery_config_destroy(config);
+        fpv_ini_destroy(ini);
+        return FPV_ERR_PARSE;
+      }
+      multi_delivery_count = (uint32_t)parsed;
     }
 
     const char* products_file =
@@ -477,6 +493,7 @@ fpv_result_t fpv_auto_delivery_config_load(
             products_file,
             timed,
             timer_hours,
+            multi_delivery_count,
             disable,
             disable_auto_restore,
             disable_auto_disable,

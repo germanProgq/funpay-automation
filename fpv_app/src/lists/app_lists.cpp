@@ -369,7 +369,9 @@ gint compare_lot_items(gconstpointer a, gconstpointer b) {
 typedef struct LotToggleTask {
   AppContext* context;
   uint64_t lot_id;
+  char* lot_id_str;
   gboolean active;
+  gboolean previous_active;
   GtkWidget* toggle;
   gboolean success;
 } LotToggleTask;
@@ -412,6 +414,10 @@ gboolean lot_toggle_complete(gpointer data) {
     return G_SOURCE_REMOVE;
   }
   if (task->context->closing) {
+    g_free(task->lot_id_str);
+    if (task->toggle) {
+      g_object_unref(task->toggle);
+    }
     g_free(task);
     return G_SOURCE_REMOVE;
   }
@@ -421,7 +427,18 @@ gboolean lot_toggle_complete(gpointer data) {
       gtk_switch_set_active(GTK_SWITCH(toggle), !task->active);
     }
     g_object_set_data(G_OBJECT(toggle), "busy", NULL);
+    g_object_unref(toggle);
   }
+  if (!task->success && task->lot_id_str && task->context->lots) {
+    fpv_lot_t* lot = (fpv_lot_t*)g_hash_table_lookup(
+        task->context->lots,
+        task->lot_id_str);
+    if (lot) {
+      lot->active = task->previous_active ? true : false;
+      refresh_lot_list(task->context);
+    }
+  }
+  g_free(task->lot_id_str);
   g_free(task);
   return G_SOURCE_REMOVE;
 }
@@ -471,12 +488,25 @@ void on_lot_toggle_changed(
     return;
   }
   gboolean active = gtk_switch_get_active(GTK_SWITCH(toggle));
+  gboolean previous_active = !active;
+  if (context->lots) {
+    fpv_lot_t* lot = (fpv_lot_t*)g_hash_table_lookup(
+        context->lots,
+        id_text);
+    if (lot) {
+      previous_active = lot->active ? TRUE : FALSE;
+      lot->active = active ? true : false;
+    }
+  }
 
   LotToggleTask* task = (LotToggleTask*)g_new0(LotToggleTask, 1);
   task->context = context;
   task->lot_id = lot_id;
+  task->lot_id_str = g_strdup(id_text);
   task->active = active;
+  task->previous_active = previous_active;
   task->toggle = toggle;
+  g_object_ref(toggle);
 
   g_object_set_data(G_OBJECT(toggle), "busy", task);
   g_thread_new("fpv-lot-toggle", lot_toggle_thread, task);
@@ -984,7 +1014,7 @@ void refresh_lot_list(AppContext* context) {
 
     GtkWidget* delivery_button = NULL;
     if (allow_auto_delivery) {
-      delivery_button = gtk_button_new_with_label("Auto Delivery");
+      delivery_button = gtk_button_new_with_label("Edit");
       if (lot->id) {
         g_object_set_data_full(
             G_OBJECT(delivery_button),

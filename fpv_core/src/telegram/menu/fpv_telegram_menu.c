@@ -252,7 +252,7 @@ bool fpv_tg_setting_allowed(
       return fpv_tg_has_entitlement(service, FPV_FEATURE_AUTO_RESPONSE);
     }
     if (strcmp(key, "autoDelivery") == 0) {
-      return fpv_tg_has_entitlement(service, FPV_FEATURE_AUTO_DELIVERY);
+      return false;
     }
     if (strcmp(key, "multiDelivery") == 0) {
       return fpv_tg_has_entitlement(service, FPV_FEATURE_MULTI_DELIVERY);

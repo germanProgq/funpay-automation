@@ -573,23 +573,43 @@ void on_auto_response_reload(GtkButton* button, gpointer user_data) {
   }
 }
 
+enum {
+  AD_ROW_LOT = 0,
+  AD_ROW_RESPONSE = 1,
+  AD_ROW_PRODUCTS = 2,
+  AD_ROW_PREVIEW = 3,
+  AD_ROW_TIMED = 4,
+  AD_ROW_TIMER = 5,
+  AD_ROW_ENABLED = 6,
+  AD_ROW_RESTORE = 7,
+  AD_ROW_AUTO_DISABLE = 8,
+  AD_ROW_AUTO_DELIVERY = 9,
+  AD_ROW_MULTI = 10,
+  AD_ROW_MULTI_COUNT = 11
+};
+
 typedef struct AutoDeliveryDialog {
   AppContext* context;
   GtkWidget* dialog;
+  GtkWidget* grid;
   GtkWidget* lot_entry;
   GtkWidget* response_entry;
   GtkTextBuffer* products_buffer;
   GtkTextBuffer* preview_buffer;
   gchar* products_filename;
+  gchar* lot_id;
   GtkWidget* timed_switch;
   GtkWidget* timer_hours;
-  GtkWidget* disable_switch;
+  GtkWidget* lot_enabled_switch;
   GtkWidget* restore_switch;
   GtkWidget* auto_disable_switch;
   GtkWidget* auto_delivery_switch;
   GtkWidget* multi_delivery_switch;
+  GtkWidget* multi_delivery_count;
   gchar* original_section;
 } AutoDeliveryDialog;
+
+static void auto_delivery_update_preview(AutoDeliveryDialog* data);
 
 gboolean auto_delivery_dialog_close(
     GtkWindow* window,
@@ -597,10 +617,111 @@ gboolean auto_delivery_dialog_close(
   AutoDeliveryDialog* data = (AutoDeliveryDialog*)user_data;
   if (data) {
     g_free(data->products_filename);
+    g_free(data->lot_id);
     g_free(data->original_section);
     g_free(data);
   }
   return FALSE;
+}
+
+static void auto_delivery_set_row_visible(
+    GtkWidget* grid,
+    int row,
+    gboolean visible) {
+  if (!grid) {
+    return;
+  }
+  GtkWidget* label = gtk_grid_get_child_at(GTK_GRID(grid), 0, row);
+  GtkWidget* widget = gtk_grid_get_child_at(GTK_GRID(grid), 1, row);
+  if (label) {
+    gtk_widget_set_visible(label, visible);
+  }
+  if (widget) {
+    gtk_widget_set_visible(widget, visible);
+  }
+}
+
+static gboolean auto_delivery_is_enabled(AutoDeliveryDialog* data) {
+  if (!data || !data->auto_delivery_switch) {
+    return FALSE;
+  }
+  return gtk_switch_get_active(GTK_SWITCH(data->auto_delivery_switch));
+}
+
+static void auto_delivery_update_timer_visibility(AutoDeliveryDialog* data) {
+  if (!data || !data->timed_switch) {
+    return;
+  }
+  gboolean timed = gtk_switch_get_active(GTK_SWITCH(data->timed_switch));
+  gboolean visible = auto_delivery_is_enabled(data) && timed;
+  auto_delivery_set_row_visible(data->grid, AD_ROW_TIMER, visible);
+}
+
+static void auto_delivery_update_multi_visibility(AutoDeliveryDialog* data) {
+  if (!data || !data->multi_delivery_switch) {
+    return;
+  }
+  gboolean enabled = gtk_switch_get_active(GTK_SWITCH(data->multi_delivery_switch));
+  gboolean visible = auto_delivery_is_enabled(data) && enabled;
+  auto_delivery_set_row_visible(data->grid, AD_ROW_MULTI_COUNT, visible);
+}
+
+static void auto_delivery_update_delivery_visibility(AutoDeliveryDialog* data) {
+  if (!data) {
+    return;
+  }
+  gboolean enabled = auto_delivery_is_enabled(data);
+  auto_delivery_set_row_visible(data->grid, AD_ROW_RESPONSE, enabled);
+  auto_delivery_set_row_visible(data->grid, AD_ROW_PRODUCTS, enabled);
+  auto_delivery_set_row_visible(data->grid, AD_ROW_PREVIEW, enabled);
+  auto_delivery_set_row_visible(data->grid, AD_ROW_TIMED, enabled);
+  auto_delivery_set_row_visible(data->grid, AD_ROW_TIMER, enabled);
+  auto_delivery_set_row_visible(data->grid, AD_ROW_RESTORE, enabled);
+  auto_delivery_set_row_visible(data->grid, AD_ROW_AUTO_DISABLE, enabled);
+  auto_delivery_set_row_visible(data->grid, AD_ROW_MULTI, enabled);
+  auto_delivery_set_row_visible(data->grid, AD_ROW_MULTI_COUNT, enabled);
+  auto_delivery_set_row_visible(data->grid, AD_ROW_ENABLED, TRUE);
+  auto_delivery_set_row_visible(data->grid, AD_ROW_AUTO_DELIVERY, TRUE);
+  auto_delivery_update_timer_visibility(data);
+  auto_delivery_update_multi_visibility(data);
+}
+
+static void auto_delivery_timed_switch_changed(
+    GtkSwitch* widget,
+    GParamSpec* pspec,
+    gpointer user_data) {
+  (void)widget;
+  (void)pspec;
+  auto_delivery_update_timer_visibility((AutoDeliveryDialog*)user_data);
+}
+
+static void auto_delivery_multi_switch_changed(
+    GtkSwitch* widget,
+    GParamSpec* pspec,
+    gpointer user_data) {
+  (void)widget;
+  (void)pspec;
+  AutoDeliveryDialog* data = (AutoDeliveryDialog*)user_data;
+  auto_delivery_update_multi_visibility(data);
+  auto_delivery_update_preview(data);
+}
+
+static void auto_delivery_multi_count_changed(
+    GtkSpinButton* button,
+    gpointer user_data) {
+  (void)button;
+  auto_delivery_update_preview((AutoDeliveryDialog*)user_data);
+}
+
+static void auto_delivery_delivery_switch_changed(
+    GtkSwitch* widget,
+    GParamSpec* pspec,
+    gpointer user_data) {
+  (void)widget;
+  (void)pspec;
+  AutoDeliveryDialog* data = (AutoDeliveryDialog*)user_data;
+  auto_delivery_update_delivery_visibility(data);
+  auto_delivery_update_preview(data);
 }
 
 typedef struct AutoDeliveryImportContext {
@@ -660,6 +781,43 @@ gchar* auto_delivery_extract_first_product(const char* text) {
   return NULL;
 }
 
+static gchar* auto_delivery_extract_products(
+    const char* text,
+    size_t count) {
+  if (!text || count == 0) {
+    return g_strdup("");
+  }
+  gchar** lines = g_strsplit(text, "\n", -1);
+  if (!lines) {
+    return g_strdup("");
+  }
+  GString* out = g_string_new(NULL);
+  size_t collected = 0;
+  for (size_t i = 0; lines[i] && collected < count; i++) {
+    gchar* line = lines[i];
+    size_t len = strlen(line);
+    while (len > 0 && line[len - 1] == '\r') {
+      len--;
+    }
+    if (len == 0) {
+      continue;
+    }
+    gchar* trimmed = g_strndup(line, len);
+    gchar* unescaped = auto_delivery_unescape_newlines(trimmed);
+    g_free(trimmed);
+    if (unescaped && unescaped[0]) {
+      if (collected > 0) {
+        g_string_append_c(out, '\n');
+      }
+      g_string_append(out, unescaped);
+      collected++;
+    }
+    g_free(unescaped);
+  }
+  g_strfreev(lines);
+  return g_string_free(out, FALSE);
+}
+
 gchar* auto_delivery_replace_all(
     const char* text,
     const char* token,
@@ -687,33 +845,43 @@ gchar* auto_delivery_replace_all(
   return g_string_free(out, FALSE);
 }
 
-void auto_delivery_update_preview(AutoDeliveryDialog* data) {
+static void auto_delivery_update_preview(AutoDeliveryDialog* data) {
   if (!data || !data->preview_buffer || !data->response_entry ||
       !data->products_buffer) {
     return;
   }
   const char* response = gtk_editable_get_text(GTK_EDITABLE(data->response_entry));
+  size_t preview_count = 1;
+  if (data->multi_delivery_switch &&
+      gtk_switch_get_active(GTK_SWITCH(data->multi_delivery_switch)) &&
+      data->multi_delivery_count) {
+    int count = gtk_spin_button_get_value_as_int(
+        GTK_SPIN_BUTTON(data->multi_delivery_count));
+    if (count > 1) {
+      preview_count = (size_t)count;
+    }
+  }
   GtkTextIter start;
   GtkTextIter end;
   gtk_text_buffer_get_start_iter(data->products_buffer, &start);
   gtk_text_buffer_get_end_iter(data->products_buffer, &end);
   gchar* products_text = gtk_text_buffer_get_text(
       data->products_buffer, &start, &end, FALSE);
-  gchar* first_line = auto_delivery_extract_first_product(products_text);
-  gchar* product = auto_delivery_unescape_newlines(first_line ? first_line : "");
+  gchar* products = auto_delivery_extract_products(products_text, preview_count);
   gchar* normalized = auto_delivery_replace_all(
       response ? response : "",
       "$products",
       "$product");
   gchar* preview = NULL;
   if (!response || !response[0]) {
-    if (first_line && first_line[0]) {
+    if (products && products[0]) {
       preview = g_strdup("Add a response to preview delivery.");
     } else {
       preview = g_strdup("Add a response and products to preview delivery.");
     }
   } else {
-    preview = auto_delivery_replace_all(normalized, "$product", product);
+    preview = auto_delivery_replace_all(normalized, "$product",
+                                        products ? products : "");
   }
   gtk_text_buffer_set_text(
       data->preview_buffer,
@@ -721,8 +889,7 @@ void auto_delivery_update_preview(AutoDeliveryDialog* data) {
       -1);
   g_free(preview);
   g_free(normalized);
-  g_free(product);
-  g_free(first_line);
+  g_free(products);
   g_free(products_text);
 }
 
@@ -846,6 +1013,68 @@ static gchar* auto_delivery_find_section_key(
 
   g_free(normalized);
   return best ? g_strdup(best) : NULL;
+}
+
+static fpv_lot_t* auto_delivery_find_lot(
+    AppContext* context,
+    const char* raw_name) {
+  if (!context || !context->lots || !raw_name || !raw_name[0]) {
+    return NULL;
+  }
+
+  fpv_lot_t* direct = (fpv_lot_t*)g_hash_table_lookup(
+      context->lots,
+      raw_name);
+  if (direct) {
+    return direct;
+  }
+
+  gchar* normalized = auto_delivery_sanitize_section_name(raw_name);
+  if (!normalized || !normalized[0]) {
+    g_free(normalized);
+    return NULL;
+  }
+
+  fpv_lot_t* by_id = (fpv_lot_t*)g_hash_table_lookup(
+      context->lots,
+      normalized);
+  if (by_id) {
+    g_free(normalized);
+    return by_id;
+  }
+
+  fpv_lot_t* best = NULL;
+  size_t best_len = 0;
+  GHashTableIter iter;
+  gpointer value = NULL;
+  g_hash_table_iter_init(&iter, context->lots);
+  while (g_hash_table_iter_next(&iter, NULL, &value)) {
+    fpv_lot_t* lot = (fpv_lot_t*)value;
+    if (!lot || !lot->title) {
+      continue;
+    }
+    gchar* title_norm = auto_delivery_sanitize_section_name(lot->title);
+    if (!title_norm || !title_norm[0]) {
+      g_free(title_norm);
+      continue;
+    }
+    if (strcmp(title_norm, normalized) == 0) {
+      g_free(title_norm);
+      g_free(normalized);
+      return lot;
+    }
+    if (strstr(normalized, title_norm) || strstr(title_norm, normalized)) {
+      size_t title_len = strlen(title_norm);
+      if (title_len > best_len) {
+        best = lot;
+        best_len = title_len;
+      }
+    }
+    g_free(title_norm);
+  }
+
+  g_free(normalized);
+  return best;
 }
 
 gchar* auto_delivery_generate_products_filename(void) {
@@ -1048,6 +1277,103 @@ void on_auto_delivery_import_clicked(GtkButton* button, gpointer user_data) {
 }
 #endif
 
+typedef struct AutoDeliveryLotToggleTask {
+  AppContext* context;
+  uint64_t lot_id;
+  char* lot_id_str;
+  gboolean active;
+  gboolean previous_active;
+  gboolean success;
+} AutoDeliveryLotToggleTask;
+
+static gboolean auto_delivery_lot_toggle_complete(gpointer data) {
+  AutoDeliveryLotToggleTask* task = (AutoDeliveryLotToggleTask*)data;
+  if (!task || !task->context) {
+    g_free(task ? task->lot_id_str : NULL);
+    g_free(task);
+    return G_SOURCE_REMOVE;
+  }
+
+  if (!task->success && task->lot_id_str && task->context->lots) {
+    fpv_lot_t* lot = (fpv_lot_t*)g_hash_table_lookup(
+        task->context->lots,
+        task->lot_id_str);
+    if (lot) {
+      lot->active = task->previous_active ? true : false;
+    }
+  }
+
+  refresh_lot_list(task->context);
+  g_free(task->lot_id_str);
+  g_free(task);
+  return G_SOURCE_REMOVE;
+}
+
+static gpointer auto_delivery_lot_toggle_thread(gpointer data) {
+  AutoDeliveryLotToggleTask* task = (AutoDeliveryLotToggleTask*)data;
+  if (!task || !task->context || !task->context->core) {
+    if (task) {
+      task->success = FALSE;
+      g_main_context_invoke(NULL, auto_delivery_lot_toggle_complete, task);
+    }
+    return NULL;
+  }
+
+  fpv_result_t result = fpv_core_set_lot_active(
+      task->context->core,
+      task->lot_id,
+      task->active);
+  task->success = result == FPV_OK;
+  if (result != FPV_OK) {
+    schedule_dialog(task->context, "Lots", "Failed to update lot state.");
+  }
+  g_main_context_invoke(NULL, auto_delivery_lot_toggle_complete, task);
+  return NULL;
+}
+
+static void auto_delivery_queue_lot_toggle(
+    AppContext* context,
+    const char* lot_id_str,
+    gboolean active) {
+  if (!context || !context->core || !lot_id_str || !lot_id_str[0]) {
+    return;
+  }
+
+  guint64 lot_id = g_ascii_strtoull(lot_id_str, NULL, 10);
+  if (lot_id == 0) {
+    return;
+  }
+
+  gboolean previous_active = !active;
+  if (context->lots) {
+    fpv_lot_t* lot = (fpv_lot_t*)g_hash_table_lookup(
+        context->lots,
+        lot_id_str);
+    if (lot) {
+      previous_active = lot->active ? TRUE : FALSE;
+      if (previous_active == active) {
+        return;
+      }
+      lot->active = active ? true : false;
+    }
+  }
+
+  refresh_lot_list(context);
+
+  AutoDeliveryLotToggleTask* task =
+      (AutoDeliveryLotToggleTask*)g_new0(AutoDeliveryLotToggleTask, 1);
+  if (!task) {
+    return;
+  }
+  task->context = context;
+  task->lot_id = lot_id;
+  task->lot_id_str = g_strdup(lot_id_str);
+  task->active = active;
+  task->previous_active = previous_active;
+
+  g_thread_new("fpv-lot-toggle", auto_delivery_lot_toggle_thread, task);
+}
+
 void auto_delivery_dialog_save(GtkButton* button, gpointer user_data) {
   AutoDeliveryDialog* data = (AutoDeliveryDialog*)user_data;
   if (!data || !data->context) {
@@ -1234,9 +1560,10 @@ void auto_delivery_dialog_save(GtkButton* button, gpointer user_data) {
     fpv_ini_remove_entry(ini, safe_lot_name, "productsFileName");
   }
 
+  gboolean auto_delivery_enabled =
+      gtk_switch_get_active(GTK_SWITCH(data->auto_delivery_switch));
   fpv_ini_set(ini, safe_lot_name, "disable",
-              gtk_switch_get_active(GTK_SWITCH(data->disable_switch))
-                  ? "1" : "0");
+              auto_delivery_enabled ? "0" : "1");
   fpv_ini_set(ini, safe_lot_name, "timed", timed ? "1" : "0");
   if (timed) {
     char timer_buf[16];
@@ -1247,16 +1574,26 @@ void auto_delivery_dialog_save(GtkButton* button, gpointer user_data) {
   }
   fpv_ini_set(ini, safe_lot_name, "disableAutoRestore",
               gtk_switch_get_active(GTK_SWITCH(data->restore_switch))
-                  ? "1" : "0");
+                  ? "0" : "1");
   fpv_ini_set(ini, safe_lot_name, "disableAutoDisable",
               gtk_switch_get_active(GTK_SWITCH(data->auto_disable_switch))
-                  ? "1" : "0");
+                  ? "0" : "1");
   fpv_ini_set(ini, safe_lot_name, "disableAutoDelivery",
-              gtk_switch_get_active(GTK_SWITCH(data->auto_delivery_switch))
-                  ? "1" : "0");
+              auto_delivery_enabled ? "0" : "1");
   fpv_ini_set(ini, safe_lot_name, "disableMultiDelivery",
               gtk_switch_get_active(GTK_SWITCH(data->multi_delivery_switch))
-                  ? "1" : "0");
+                  ? "0" : "1");
+  if (data->multi_delivery_count) {
+    int multi_count = gtk_spin_button_get_value_as_int(
+        GTK_SPIN_BUTTON(data->multi_delivery_count));
+    if (multi_count > 0) {
+      char count_buf[16];
+      snprintf(count_buf, sizeof(count_buf), "%d", multi_count);
+      fpv_ini_set(ini, safe_lot_name, "multiDeliveryCount", count_buf);
+    } else {
+      fpv_ini_remove_entry(ini, safe_lot_name, "multiDeliveryCount");
+    }
+  }
 
   fpv_result_t save_result = fpv_ini_save(ini, path);
   fpv_ini_destroy(ini);
@@ -1274,6 +1611,35 @@ void auto_delivery_dialog_save(GtkButton* button, gpointer user_data) {
   refresh_auto_delivery_list(data->context);
   if (data->context->running) {
     fpv_core_reload_auto_delivery(data->context->core);
+  }
+
+  if (app_has_feature(data->context, FPV_FEATURE_STATUS_MANAGER) &&
+      data->lot_enabled_switch &&
+      gtk_widget_get_sensitive(data->lot_enabled_switch)) {
+    const char* lot_name_current = gtk_editable_get_text(
+        GTK_EDITABLE(data->lot_entry));
+    fpv_lot_t* lot = auto_delivery_find_lot(data->context, lot_name_current);
+    const char* lot_id = lot && lot->id ? lot->id : NULL;
+    if (!lot_id &&
+        data->lot_id &&
+        data->original_section &&
+        lot_name_current &&
+        strcmp(lot_name_current, data->original_section) == 0) {
+      lot_id = data->lot_id;
+    }
+    if (lot_id && lot_id[0]) {
+      gboolean desired_active =
+          gtk_switch_get_active(GTK_SWITCH(data->lot_enabled_switch));
+      gboolean current_active = lot ? (lot->active ? TRUE : FALSE) : !desired_active;
+      if (!lot || current_active != desired_active) {
+        auto_delivery_queue_lot_toggle(data->context, lot_id, desired_active);
+      }
+    } else if (lot_name_current && lot_name_current[0]) {
+      schedule_dialog(
+          data->context,
+          "Lots",
+          "Lot not found; status not updated.");
+    }
   }
 
   g_free(safe_lot_name);
@@ -1294,7 +1660,7 @@ void show_auto_delivery_dialog(
       section_name ? "Edit Auto Delivery" : "Add Auto Delivery");
   gtk_window_set_transient_for(GTK_WINDOW(dialog), GTK_WINDOW(context->window));
   gtk_window_set_modal(GTK_WINDOW(dialog), TRUE);
-  gtk_window_set_default_size(GTK_WINDOW(dialog), 560, 860);
+  gtk_window_set_default_size(GTK_WINDOW(dialog), 560, 760);
 
   GtkWidget* root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
   gtk_widget_set_margin_top(root, 12);
@@ -1368,35 +1734,51 @@ void show_auto_delivery_dialog(
   GtkWidget* timer_hours = gtk_spin_button_new_with_range(1, 720, 1);
   gtk_spin_button_set_numeric(GTK_SPIN_BUTTON(timer_hours), TRUE);
   gtk_spin_button_set_value(GTK_SPIN_BUTTON(timer_hours), 24);
-  GtkWidget* disable_switch = gtk_switch_new();
+  GtkWidget* lot_enabled_switch = gtk_switch_new();
   GtkWidget* restore_switch = gtk_switch_new();
   GtkWidget* auto_disable_switch = gtk_switch_new();
   GtkWidget* auto_delivery_switch = gtk_switch_new();
   GtkWidget* multi_delivery_switch = gtk_switch_new();
+  GtkWidget* multi_delivery_count = gtk_spin_button_new_with_range(1, 100, 1);
+  gtk_spin_button_set_numeric(GTK_SPIN_BUTTON(multi_delivery_count), TRUE);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(multi_delivery_count), 1);
 
-  add_setting_row(grid, 0, "Lot name", lot_entry);
-  add_setting_row(grid, 1, "Response", response_entry);
+  gtk_switch_set_active(GTK_SWITCH(lot_enabled_switch), TRUE);
+  gtk_widget_set_sensitive(
+      lot_enabled_switch,
+      app_has_feature(context, FPV_FEATURE_STATUS_MANAGER));
+  gtk_switch_set_active(GTK_SWITCH(restore_switch), TRUE);
+  gtk_switch_set_active(GTK_SWITCH(auto_disable_switch), TRUE);
+  gtk_switch_set_active(GTK_SWITCH(auto_delivery_switch), TRUE);
+  gtk_switch_set_active(GTK_SWITCH(multi_delivery_switch), TRUE);
+
+  add_setting_row(grid, AD_ROW_LOT, "Lot name", lot_entry);
+  add_setting_row(grid, AD_ROW_RESPONSE, "Response", response_entry);
   GtkWidget* products_label = gtk_label_new("Products");
   gtk_label_set_xalign(GTK_LABEL(products_label), 0.0f);
   gtk_widget_set_margin_bottom(products_label, 4);
   gtk_widget_set_margin_top(products_label, 4);
   gtk_widget_set_valign(products_label, GTK_ALIGN_START);
-  gtk_grid_attach(GTK_GRID(grid), products_label, 0, 2, 1, 1);
-  gtk_grid_attach(GTK_GRID(grid), products_box, 1, 2, 1, 1);
+  gtk_grid_attach(GTK_GRID(grid), products_label, 0, AD_ROW_PRODUCTS, 1, 1);
+  gtk_grid_attach(GTK_GRID(grid), products_box, 1, AD_ROW_PRODUCTS, 1, 1);
   GtkWidget* preview_label = gtk_label_new("Preview");
   gtk_label_set_xalign(GTK_LABEL(preview_label), 0.0f);
   gtk_widget_set_margin_bottom(preview_label, 4);
   gtk_widget_set_margin_top(preview_label, 4);
   gtk_widget_set_valign(preview_label, GTK_ALIGN_START);
-  gtk_grid_attach(GTK_GRID(grid), preview_label, 0, 3, 1, 1);
-  gtk_grid_attach(GTK_GRID(grid), preview_box, 1, 3, 1, 1);
-  add_setting_row(grid, 4, "Timed lot", timed_switch);
-  add_setting_row(grid, 5, "Timer hours", timer_hours);
-  add_setting_row(grid, 6, "Disable", disable_switch);
-  add_setting_row(grid, 7, "Disable auto restore", restore_switch);
-  add_setting_row(grid, 8, "Disable auto disable", auto_disable_switch);
-  add_setting_row(grid, 9, "Disable auto delivery", auto_delivery_switch);
-  add_setting_row(grid, 10, "Disable multi delivery", multi_delivery_switch);
+  gtk_grid_attach(GTK_GRID(grid), preview_label, 0, AD_ROW_PREVIEW, 1, 1);
+  gtk_grid_attach(GTK_GRID(grid), preview_box, 1, AD_ROW_PREVIEW, 1, 1);
+  add_setting_row(grid, AD_ROW_TIMED, "Auto reload", timed_switch);
+  GtkWidget* timer_hours_label = gtk_label_new("Reload interval (hours)");
+  add_setting_row_label(grid, AD_ROW_TIMER, timer_hours_label, timer_hours);
+  add_setting_row(grid, AD_ROW_ENABLED, "Enabled", lot_enabled_switch);
+  add_setting_row(grid, AD_ROW_RESTORE, "Auto restore", restore_switch);
+  add_setting_row(grid, AD_ROW_AUTO_DISABLE, "Auto disable", auto_disable_switch);
+  add_setting_row(grid, AD_ROW_AUTO_DELIVERY, "Auto delivery", auto_delivery_switch);
+  add_setting_row(grid, AD_ROW_MULTI, "Multi delivery", multi_delivery_switch);
+  GtkWidget* multi_delivery_count_label = gtk_label_new("Items per delivery");
+  add_setting_row_label(grid, AD_ROW_MULTI_COUNT, multi_delivery_count_label,
+                        multi_delivery_count);
 
   GtkWidget* actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
   gtk_widget_set_halign(actions, GTK_ALIGN_END);
@@ -1405,7 +1787,25 @@ void show_auto_delivery_dialog(
   gtk_box_append(GTK_BOX(actions), cancel_button);
   gtk_box_append(GTK_BOX(actions), save_button);
 
-  gtk_box_append(GTK_BOX(root), grid);
+  GtkWidget* scroller = gtk_scrolled_window_new();
+  gtk_scrolled_window_set_policy(
+      GTK_SCROLLED_WINDOW(scroller),
+      GTK_POLICY_NEVER,
+      GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_kinetic_scrolling(
+      GTK_SCROLLED_WINDOW(scroller),
+      TRUE);
+  gtk_scrolled_window_set_min_content_height(
+      GTK_SCROLLED_WINDOW(scroller),
+      360);
+  gtk_scrolled_window_set_propagate_natural_height(
+      GTK_SCROLLED_WINDOW(scroller),
+      FALSE);
+  gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroller), grid);
+  gtk_widget_set_hexpand(scroller, TRUE);
+  gtk_widget_set_vexpand(scroller, TRUE);
+
+  gtk_box_append(GTK_BOX(root), scroller);
   gtk_box_append(GTK_BOX(root), actions);
   gtk_window_set_child(GTK_WINDOW(dialog), root);
 
@@ -1413,18 +1813,21 @@ void show_auto_delivery_dialog(
       AutoDeliveryDialog, 1);
   dialog_data->context = context;
   dialog_data->dialog = dialog;
+  dialog_data->grid = grid;
   dialog_data->lot_entry = lot_entry;
   dialog_data->response_entry = response_entry;
   dialog_data->products_buffer = products_buffer;
   dialog_data->preview_buffer = preview_buffer;
   dialog_data->products_filename = NULL;
+  dialog_data->lot_id = NULL;
   dialog_data->timed_switch = timed_switch;
   dialog_data->timer_hours = timer_hours;
-  dialog_data->disable_switch = disable_switch;
+  dialog_data->lot_enabled_switch = lot_enabled_switch;
   dialog_data->restore_switch = restore_switch;
   dialog_data->auto_disable_switch = auto_disable_switch;
   dialog_data->auto_delivery_switch = auto_delivery_switch;
   dialog_data->multi_delivery_switch = multi_delivery_switch;
+  dialog_data->multi_delivery_count = multi_delivery_count;
   dialog_data->original_section = NULL;
 
   g_signal_connect(
@@ -1441,6 +1844,26 @@ void show_auto_delivery_dialog(
       products_buffer,
       "changed",
       G_CALLBACK(auto_delivery_preview_buffer_changed),
+      dialog_data);
+  g_signal_connect(
+      timed_switch,
+      "notify::active",
+      G_CALLBACK(auto_delivery_timed_switch_changed),
+      dialog_data);
+  g_signal_connect(
+      multi_delivery_switch,
+      "notify::active",
+      G_CALLBACK(auto_delivery_multi_switch_changed),
+      dialog_data);
+  g_signal_connect(
+      multi_delivery_count,
+      "value-changed",
+      G_CALLBACK(auto_delivery_multi_count_changed),
+      dialog_data);
+  g_signal_connect(
+      auto_delivery_switch,
+      "notify::active",
+      G_CALLBACK(auto_delivery_delivery_switch_changed),
       dialog_data);
 
   if (section_name) {
@@ -1473,6 +1896,8 @@ void show_auto_delivery_dialog(
           ini, target_section, "disableAutoDelivery");
       const char* multi_delivery = fpv_ini_get(
           ini, target_section, "disableMultiDelivery");
+      const char* multi_delivery_count_value = fpv_ini_get(
+          ini, target_section, "multiDeliveryCount");
 
       gtk_editable_set_text(
           GTK_EDITABLE(response_entry),
@@ -1511,9 +1936,6 @@ void show_auto_delivery_dialog(
         }
       }
       gtk_switch_set_active(
-          GTK_SWITCH(disable_switch),
-          parse_ini_bool(disable, FALSE));
-      gtk_switch_set_active(
           GTK_SWITCH(timed_switch),
           parse_ini_bool(timed, FALSE));
       if (timer_hours && timer_hours[0]) {
@@ -1527,16 +1949,28 @@ void show_auto_delivery_dialog(
       }
       gtk_switch_set_active(
           GTK_SWITCH(restore_switch),
-          parse_ini_bool(restore, FALSE));
+          !parse_ini_bool(restore, FALSE));
       gtk_switch_set_active(
           GTK_SWITCH(auto_disable_switch),
-          parse_ini_bool(auto_disable, FALSE));
+          !parse_ini_bool(auto_disable, FALSE));
+      gboolean disable_delivery =
+          parse_ini_bool(disable, FALSE) ||
+          parse_ini_bool(auto_delivery, FALSE);
       gtk_switch_set_active(
           GTK_SWITCH(auto_delivery_switch),
-          parse_ini_bool(auto_delivery, FALSE));
+          !disable_delivery);
       gtk_switch_set_active(
           GTK_SWITCH(multi_delivery_switch),
-          parse_ini_bool(multi_delivery, FALSE));
+          !parse_ini_bool(multi_delivery, FALSE));
+      if (multi_delivery_count_value && multi_delivery_count_value[0]) {
+        char* end = NULL;
+        long parsed = strtol(multi_delivery_count_value, &end, 10);
+        if (end && *end == '\0' && parsed > 0) {
+          gtk_spin_button_set_value(
+              GTK_SPIN_BUTTON(multi_delivery_count),
+              (gdouble)parsed);
+        }
+      }
       g_free(section_key);
       fpv_ini_destroy(ini);
     } else {
@@ -1544,6 +1978,16 @@ void show_auto_delivery_dialog(
     }
     g_free(path);
   }
+  const char* lot_name_current = gtk_editable_get_text(GTK_EDITABLE(lot_entry));
+  fpv_lot_t* lot = auto_delivery_find_lot(context, lot_name_current);
+  if (lot) {
+    gtk_switch_set_active(
+        GTK_SWITCH(lot_enabled_switch),
+        lot->active ? TRUE : FALSE);
+    g_free(dialog_data->lot_id);
+    dialog_data->lot_id = lot->id ? g_strdup(lot->id) : NULL;
+  }
+  auto_delivery_update_delivery_visibility(dialog_data);
 
   g_signal_connect_swapped(
       cancel_button,
@@ -1697,9 +2141,6 @@ void refresh_settings_from_file(AppContext* context) {
   gtk_switch_set_active(
       GTK_SWITCH(context->settings.funpay_auto_response),
       parse_ini_bool(fpv_ini_get(ini, "FunPay", "autoResponse"), FALSE));
-  gtk_switch_set_active(
-      GTK_SWITCH(context->settings.funpay_auto_delivery),
-      parse_ini_bool(fpv_ini_get(ini, "FunPay", "autoDelivery"), FALSE));
   gtk_switch_set_active(
       GTK_SWITCH(context->settings.funpay_multi_delivery),
       parse_ini_bool(fpv_ini_get(ini, "FunPay", "multiDelivery"), FALSE));
@@ -1938,12 +2379,6 @@ void apply_settings_entitlements(AppContext* context) {
       gtk_switch_set_active(GTK_SWITCH(context->settings.funpay_auto_response), FALSE);
     }
     gtk_widget_set_sensitive(context->settings.funpay_auto_response, allow_auto_response);
-  }
-  if (context->settings.funpay_auto_delivery) {
-    if (!allow_auto_delivery) {
-      gtk_switch_set_active(GTK_SWITCH(context->settings.funpay_auto_delivery), FALSE);
-    }
-    gtk_widget_set_sensitive(context->settings.funpay_auto_delivery, allow_auto_delivery);
   }
   if (context->settings.funpay_multi_delivery) {
     if (!allow_multi_delivery) {

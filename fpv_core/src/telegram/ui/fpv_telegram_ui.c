@@ -438,10 +438,6 @@ char* fpv_tg_build_main_settings(
   fpv_free(label);
   fpv_tg_keyboard_row_end(kb);
 
-  label = fpv_tg_format_toggle_label(service, "gs_autodelivery", settings->auto_delivery);
-  snprintf(cb_buf, sizeof(cb_buf), "%s:FunPay:autoDelivery", fpv_tg_cbt_switch);
-  fpv_tg_keyboard_add_button(kb, label, cb_buf, NULL);
-  fpv_free(label);
   label = fpv_tg_format_toggle_label(service, "gs_nultidelivery", settings->multi_delivery);
   snprintf(cb_buf, sizeof(cb_buf), "%s:FunPay:multiDelivery", fpv_tg_cbt_switch);
   fpv_tg_keyboard_add_button(kb, label, cb_buf, NULL);
@@ -1364,6 +1360,8 @@ char* fpv_tg_build_edit_lot_keyboard(
   bool disabled_multi = false;
   bool disabled_restore = false;
   bool disabled_disable = false;
+  bool allow_auto_delivery =
+      fpv_tg_has_entitlement(service, FPV_FEATURE_AUTO_DELIVERY);
   fpv_tg_parse_bool(disable, &disabled);
   fpv_tg_parse_bool(disable_multi, &disabled_multi);
   fpv_tg_parse_bool(disable_restore, &disabled_restore);
@@ -1421,12 +1419,12 @@ char* fpv_tg_build_edit_lot_keyboard(
     fpv_tg_free_string_array(files, file_count);
   }
 
-  const char* icon_delivery = fpv_tg_icon_lot_state(settings->auto_delivery, disabled);
+  const char* icon_delivery = fpv_tg_icon_lot_state(allow_auto_delivery, disabled);
   char* label = fpv_tg_loc_format(
       service, "ea_delivery", (const char*[]){icon_delivery}, 1);
   snprintf(cb_buf, sizeof(cb_buf), "%s:disable:%zu:%zu", fpv_tg_cb_switch_lot, lot_index, offset);
   fpv_tg_keyboard_add_button(kb, label,
-                             settings->auto_delivery ? cb_buf : fpv_tg_cbt_param_disabled,
+                             allow_auto_delivery ? cb_buf : fpv_tg_cbt_param_disabled,
                              NULL);
   fpv_free(label);
   const char* icon_multi = fpv_tg_icon_lot_state(settings->multi_delivery, disabled_multi);

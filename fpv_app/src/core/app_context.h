@@ -27,7 +27,6 @@ typedef struct SettingsWidgets {
   GtkWidget* funpay_user_agent;
   GtkWidget* funpay_auto_raise;
   GtkWidget* funpay_auto_response;
-  GtkWidget* funpay_auto_delivery;
   GtkWidget* funpay_multi_delivery;
   GtkWidget* funpay_auto_restore;
   GtkWidget* funpay_auto_disable;

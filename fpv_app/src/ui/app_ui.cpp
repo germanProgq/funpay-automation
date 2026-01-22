@@ -54,9 +54,6 @@ void save_settings_to_file(GtkButton* button, gpointer user_data) {
   fpv_ini_set(ini, "FunPay", "autoResponse",
               gtk_switch_get_active(
                   GTK_SWITCH(context->settings.funpay_auto_response)) ? "1" : "0");
-  fpv_ini_set(ini, "FunPay", "autoDelivery",
-              gtk_switch_get_active(
-                  GTK_SWITCH(context->settings.funpay_auto_delivery)) ? "1" : "0");
   fpv_ini_set(ini, "FunPay", "multiDelivery",
               gtk_switch_get_active(
                   GTK_SWITCH(context->settings.funpay_multi_delivery)) ? "1" : "0");
@@ -692,7 +689,6 @@ GtkWidget* build_settings_page(AppContext* context) {
   context->settings.funpay_user_agent = gtk_entry_new();
   context->settings.funpay_auto_raise = gtk_switch_new();
   context->settings.funpay_auto_response = gtk_switch_new();
-  context->settings.funpay_auto_delivery = gtk_switch_new();
   context->settings.funpay_multi_delivery = gtk_switch_new();
   context->settings.funpay_auto_restore = gtk_switch_new();
   context->settings.funpay_auto_disable = gtk_switch_new();
@@ -702,11 +698,10 @@ GtkWidget* build_settings_page(AppContext* context) {
   add_setting_row(funpay_grid, 1, "User agent", context->settings.funpay_user_agent);
   add_setting_row(funpay_grid, 2, "Auto raise", context->settings.funpay_auto_raise);
   add_setting_row(funpay_grid, 3, "Auto response", context->settings.funpay_auto_response);
-  add_setting_row(funpay_grid, 4, "Auto delivery", context->settings.funpay_auto_delivery);
-  add_setting_row(funpay_grid, 5, "Multi delivery", context->settings.funpay_multi_delivery);
-  add_setting_row(funpay_grid, 6, "Auto restore", context->settings.funpay_auto_restore);
-  add_setting_row(funpay_grid, 7, "Auto disable", context->settings.funpay_auto_disable);
-  add_setting_row(funpay_grid, 8, "Old message mode", context->settings.funpay_old_msg_mode);
+  add_setting_row(funpay_grid, 4, "Multi delivery", context->settings.funpay_multi_delivery);
+  add_setting_row(funpay_grid, 5, "Auto restore", context->settings.funpay_auto_restore);
+  add_setting_row(funpay_grid, 6, "Auto disable", context->settings.funpay_auto_disable);
+  add_setting_row(funpay_grid, 7, "Old message mode", context->settings.funpay_old_msg_mode);
 
   GtkWidget* telegram_frame = gtk_frame_new("Telegram");
   GtkWidget* telegram_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);

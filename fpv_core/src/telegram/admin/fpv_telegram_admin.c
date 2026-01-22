@@ -336,10 +336,6 @@ void fpv_tg_send_all_settings(fpv_telegram_service_t* service, int64_t chat_id) 
   fpv_tg_buffer_append_str(&text, &length, &capacity, label);
   fpv_tg_buffer_append_str(&text, &length, &capacity, "\n");
   fpv_free(label);
-  label = fpv_tg_format_toggle_label(service, "gs_autodelivery", settings.auto_delivery);
-  fpv_tg_buffer_append_str(&text, &length, &capacity, label);
-  fpv_tg_buffer_append_str(&text, &length, &capacity, "\n");
-  fpv_free(label);
   label = fpv_tg_format_toggle_label(service, "gs_nultidelivery", settings.multi_delivery);
   fpv_tg_buffer_append_str(&text, &length, &capacity, label);
   fpv_tg_buffer_append_str(&text, &length, &capacity, "\n");

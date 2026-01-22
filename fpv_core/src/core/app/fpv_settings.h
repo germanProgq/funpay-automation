@@ -16,7 +16,6 @@ typedef struct fpv_settings {
   fpv_product_tier_t tier;
   bool auto_raise;
   bool auto_response;
-  bool auto_delivery;
   bool multi_delivery;
   bool auto_restore;
   bool auto_disable;

@@ -351,6 +351,10 @@ static bool fpv_funpay_parse_href_id(
 static bool fpv_funpay_parse_lot_section_id(
     const char* href,
     uint64_t* out_id);
+static bool fpv_funpay_href_has_lot_section_marker(const char* href);
+static bool fpv_funpay_parse_lot_section_query(
+    const char* href,
+    uint64_t* out_id);
 
 
 static void fpv_funpay_format_price_value(
@@ -1306,7 +1310,7 @@ static bool fpv_funpay_public_lot_extract_subcategory_id(
       fpv_free(href);
       continue;
     }
-    if (!strstr(href, "/lots/") && !strstr(href, "/chips/")) {
+    if (!fpv_funpay_href_has_lot_section_marker(href)) {
       fpv_free(href);
       continue;
     }
@@ -1665,6 +1669,33 @@ static bool fpv_funpay_parse_query_param_u64(
   return false;
 }
 
+static bool fpv_funpay_href_has_lot_section_marker(const char* href) {
+  if (!href || !href[0]) {
+    return false;
+  }
+  if (strstr(href, "/lots") || strstr(href, "/chips")) {
+    return true;
+  }
+  if (strncmp(href, "lots", strlen("lots")) == 0 ||
+      strncmp(href, "chips", strlen("chips")) == 0) {
+    return true;
+  }
+  return false;
+}
+
+static bool fpv_funpay_parse_lot_section_query(
+    const char* href,
+    uint64_t* out_id) {
+  if (!href || !out_id) {
+    return false;
+  }
+  return fpv_funpay_parse_query_param_u64(href, "id", out_id) ||
+      fpv_funpay_parse_query_param_u64(href, "sub", out_id) ||
+      fpv_funpay_parse_query_param_u64(href, "subcat", out_id) ||
+      fpv_funpay_parse_query_param_u64(href, "subcategory", out_id) ||
+      fpv_funpay_parse_query_param_u64(href, "node", out_id);
+}
+
 
 static bool fpv_funpay_parse_lot_section_id(
     const char* href,
@@ -1672,9 +1703,8 @@ static bool fpv_funpay_parse_lot_section_id(
   if (!href || !out_id) {
     return false;
   }
-  bool has_lots = strstr(href, "lots") != NULL;
-  bool has_chips = strstr(href, "chips") != NULL;
-  bool allow_query = (has_lots || has_chips) && !strstr(href, "offer");
+  bool allow_query = fpv_funpay_href_has_lot_section_marker(href);
+  bool has_offer = strstr(href, "offer") != NULL;
   if (fpv_funpay_parse_href_id(href, out_id)) {
     return true;
   }
@@ -1734,14 +1764,10 @@ static bool fpv_funpay_parse_lot_section_id(
     }
   }
   if (!marker || marker_len == 0) {
-    if (allow_query &&
-        (fpv_funpay_parse_query_param_u64(href, "id", out_id) ||
-         fpv_funpay_parse_query_param_u64(href, "sub", out_id) ||
-         fpv_funpay_parse_query_param_u64(href, "subcat", out_id) ||
-         fpv_funpay_parse_query_param_u64(href, "subcategory", out_id))) {
+    if (allow_query && fpv_funpay_parse_lot_section_query(href, out_id)) {
       return true;
     }
-    if (allow_query && fpv_funpay_parse_last_uint64(href, out_id)) {
+    if (allow_query && !has_offer && fpv_funpay_parse_last_uint64(href, out_id)) {
       return true;
     }
     return false;
@@ -1760,14 +1786,10 @@ static bool fpv_funpay_parse_lot_section_id(
     start++;
   }
   if (start >= limit) {
-    if (allow_query && fpv_funpay_parse_last_uint64(href, out_id)) {
+    if (allow_query && fpv_funpay_parse_lot_section_query(href, out_id)) {
       return true;
     }
-    if (allow_query &&
-        (fpv_funpay_parse_query_param_u64(href, "id", out_id) ||
-         fpv_funpay_parse_query_param_u64(href, "sub", out_id) ||
-         fpv_funpay_parse_query_param_u64(href, "subcat", out_id) ||
-         fpv_funpay_parse_query_param_u64(href, "subcategory", out_id))) {
+    if (allow_query && !has_offer && fpv_funpay_parse_last_uint64(href, out_id)) {
       return true;
     }
     return false;
@@ -1786,14 +1808,10 @@ static bool fpv_funpay_parse_lot_section_id(
   bool ok = parse_end && *parse_end == '\0';
   fpv_free(temp);
   if (!ok) {
-    if (allow_query && fpv_funpay_parse_last_uint64(href, out_id)) {
+    if (allow_query && fpv_funpay_parse_lot_section_query(href, out_id)) {
       return true;
     }
-    if (allow_query &&
-        (fpv_funpay_parse_query_param_u64(href, "id", out_id) ||
-         fpv_funpay_parse_query_param_u64(href, "sub", out_id) ||
-         fpv_funpay_parse_query_param_u64(href, "subcat", out_id) ||
-         fpv_funpay_parse_query_param_u64(href, "subcategory", out_id))) {
+    if (allow_query && !has_offer && fpv_funpay_parse_last_uint64(href, out_id)) {
       return true;
     }
     return false;
@@ -3828,7 +3846,7 @@ fpv_result_t fpv_funpay_account_get_lot_sections(
       skipped_no_href++;
       continue;
     }
-    if (!strstr(href, "/lots/") && !strstr(href, "/chips/")) {
+    if (!fpv_funpay_href_has_lot_section_marker(href)) {
       fpv_free(href);
       skipped_non_lot++;
       continue;
@@ -3847,10 +3865,7 @@ fpv_result_t fpv_funpay_account_get_lot_sections(
         bool parsed_href = fpv_funpay_parse_href_id(href, &debug_id);
         bool parsed_last = fpv_funpay_parse_last_uint64(href, &debug_last);
         bool parsed_query =
-            fpv_funpay_parse_query_param_u64(href, "id", &debug_query) ||
-            fpv_funpay_parse_query_param_u64(href, "sub", &debug_query) ||
-            fpv_funpay_parse_query_param_u64(href, "subcat", &debug_query) ||
-            fpv_funpay_parse_query_param_u64(href, "subcategory", &debug_query);
+            fpv_funpay_parse_lot_section_query(href, &debug_query);
         fpv_funpay_logf(
             account,
             FPV_LOG_INFO,
@@ -5218,7 +5233,7 @@ fpv_result_t fpv_funpay_account_get_lot_subcategories(
     if (!href) {
       continue;
     }
-    if (!strstr(href, "/lots/") && !strstr(href, "/chips/")) {
+    if (!fpv_funpay_href_has_lot_section_marker(href)) {
       fpv_free(href);
       continue;
     }
