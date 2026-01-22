@@ -9,6 +9,7 @@
 gchar* format_timestamp(uint64_t timestamp_ms);
 gchar* format_time_short(uint64_t timestamp_ms);
 gchar* sanitize_utf8(const char* text);
+gchar* normalize_whitespace(const char* text);
 char* app_strdup(const char* value);
 const char* status_label(fpv_core_status_t status);
 const char* log_level_label(fpv_log_level_t level);

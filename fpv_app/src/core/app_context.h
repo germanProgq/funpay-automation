@@ -166,6 +166,13 @@ typedef struct AppContext {
 
   guint poll_id;
   size_t event_count;
+  GPtrArray* chat_refresh_queue;
+  guint chat_refresh_id;
+  guint chat_refresh_index;
+  guint64 chat_refresh_last_active_ms;
+  guint64 chat_refresh_last_background_ms;
+  gboolean chat_refresh_in_flight;
+  gboolean chat_refresh_warmup;
   gboolean running;
   gboolean closing;
 } AppContext;

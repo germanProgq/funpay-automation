@@ -42,6 +42,7 @@ static void app_context_destroy(gpointer data) {
     g_source_remove(context->poll_id);
     context->poll_id = 0;
   }
+  stop_chat_refresh(context);
 
   if (context->core && context->running) {
     fpv_core_stop(context->core, (uint64_t)(g_get_real_time() / 1000ULL));
@@ -115,6 +116,7 @@ static gboolean on_window_close(GtkWindow* window, gpointer user_data) {
     g_source_remove(context->poll_id);
     context->poll_id = 0;
   }
+  stop_chat_refresh(context);
   return FALSE;
 }
 

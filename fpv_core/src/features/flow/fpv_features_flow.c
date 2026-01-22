@@ -131,6 +131,900 @@ static uint32_t fpv_parse_order_amount(const char* title) {
   return 1;
 }
 
+static void fpv_timed_entries_remove(
+    fpv_feature_state_t* state,
+    size_t index) {
+  fpv_free(state->timed_entries[index].response);
+  if (index + 1 < state->timed_count) {
+    memmove(
+        &state->timed_entries[index],
+        &state->timed_entries[index + 1],
+        (state->timed_count - index - 1) * sizeof(*state->timed_entries));
+  }
+  state->timed_count--;
+}
+
+static void fpv_timed_entries_add(
+    fpv_feature_state_t* state,
+    uint64_t chat_id,
+    uint64_t lot_id,
+    uint64_t expires_at_ms,
+    const char* response) {
+  if (!state || chat_id == 0 || lot_id == 0 || !response || !response[0]) {
+    return;
+  }
+  fpv_mutex_lock(&state->timed_mutex);
+  for (size_t i = 0; i < state->timed_count; i++) {
+    fpv_timed_lot_entry_t* entry = &state->timed_entries[i];
+    if (entry->chat_id == chat_id && entry->lot_id == lot_id) {
+      entry->expires_at_ms = expires_at_ms;
+      if (entry->response && strcmp(entry->response, response) == 0) {
+        fpv_mutex_unlock(&state->timed_mutex);
+        return;
+      }
+      fpv_free(entry->response);
+      entry->response = fpv_strdup(response);
+      fpv_mutex_unlock(&state->timed_mutex);
+      return;
+    }
+  }
+  fpv_timed_lot_entry_t* grown = (fpv_timed_lot_entry_t*)realloc(
+      state->timed_entries,
+      (state->timed_count + 1) * sizeof(*grown));
+  if (!grown) {
+    fpv_mutex_unlock(&state->timed_mutex);
+    return;
+  }
+  state->timed_entries = grown;
+  fpv_timed_lot_entry_t* entry = &state->timed_entries[state->timed_count];
+  entry->chat_id = chat_id;
+  entry->lot_id = lot_id;
+  entry->expires_at_ms = expires_at_ms;
+  entry->response = fpv_strdup(response);
+  if (!entry->response) {
+    fpv_mutex_unlock(&state->timed_mutex);
+    return;
+  }
+  state->timed_count++;
+  fpv_mutex_unlock(&state->timed_mutex);
+}
+
+static char* fpv_timed_entries_response_for_chat(
+    fpv_feature_state_t* state,
+    uint64_t chat_id,
+    uint64_t now_ms) {
+  if (!state || chat_id == 0) {
+    return NULL;
+  }
+  char* response = NULL;
+  fpv_mutex_lock(&state->timed_mutex);
+  for (size_t i = 0; i < state->timed_count; ) {
+    fpv_timed_lot_entry_t* entry = &state->timed_entries[i];
+    if (entry->expires_at_ms > 0 && entry->expires_at_ms <= now_ms) {
+      fpv_timed_entries_remove(state, i);
+      continue;
+    }
+    if (entry->chat_id == chat_id && entry->response) {
+      response = fpv_strdup(entry->response);
+      break;
+    }
+    i++;
+  }
+  fpv_mutex_unlock(&state->timed_mutex);
+  return response;
+}
+
+static uint64_t fpv_timed_entries_latest_expire(
+    fpv_feature_state_t* state,
+    uint64_t lot_id) {
+  if (!state || lot_id == 0) {
+    return 0;
+  }
+  uint64_t latest = 0;
+  fpv_mutex_lock(&state->timed_mutex);
+  for (size_t i = 0; i < state->timed_count; i++) {
+    fpv_timed_lot_entry_t* entry = &state->timed_entries[i];
+    if (entry->lot_id == lot_id && entry->expires_at_ms > latest) {
+      latest = entry->expires_at_ms;
+    }
+  }
+  fpv_mutex_unlock(&state->timed_mutex);
+  return latest;
+}
+
+static void fpv_timed_entries_remove_lot(
+    fpv_feature_state_t* state,
+    uint64_t lot_id) {
+  if (!state || lot_id == 0) {
+    return;
+  }
+  fpv_mutex_lock(&state->timed_mutex);
+  for (size_t i = 0; i < state->timed_count; ) {
+    if (state->timed_entries[i].lot_id == lot_id) {
+      fpv_timed_entries_remove(state, i);
+      continue;
+    }
+    i++;
+  }
+  fpv_mutex_unlock(&state->timed_mutex);
+}
+
+static char* fpv_unescape_product(const char* text) {
+  if (!text) {
+    return fpv_strdup("");
+  }
+  size_t length = 0;
+  size_t capacity = 0;
+  char* buffer = NULL;
+  const char* cursor = text;
+  while (*cursor) {
+    if (cursor[0] == '\\' && cursor[1] == 'n') {
+      fpv_buffer_append_char(&buffer, &length, &capacity, '\n');
+      cursor += 2;
+      continue;
+    }
+    fpv_buffer_append_char(&buffer, &length, &capacity, *cursor);
+    cursor++;
+  }
+  if (!buffer) {
+    return fpv_strdup("");
+  }
+  return buffer;
+}
+
+static bool fpv_features_set_lot_secrets(
+    fpv_feature_state_t* state,
+    uint64_t lot_id,
+    const char* secrets) {
+  if (!state || !state->account || lot_id == 0) {
+    return false;
+  }
+  fpv_funpay_error_t error;
+  memset(&error, 0, sizeof(error));
+  fpv_result_t result =
+      fpv_funpay_account_set_lot_secrets(
+          state->account,
+          lot_id,
+          secrets ? secrets : "",
+          &error);
+  if (result != FPV_OK) {
+    fpv_features_log(
+        state,
+        FPV_LOG_WARNING,
+        error.message ? error.message : "Lot secrets update failed.");
+  }
+  fpv_funpay_error_clear(&error);
+  return result == FPV_OK;
+}
+
+static uint64_t fpv_features_find_lot_id_by_name(
+    fpv_feature_state_t* state,
+    const char* lot_name) {
+  if (!state || !state->account || !lot_name || !lot_name[0]) {
+    return 0;
+  }
+  fpv_funpay_lot_section_t* sections = NULL;
+  size_t section_count = 0;
+  fpv_funpay_error_t error;
+  memset(&error, 0, sizeof(error));
+  fpv_result_t result = fpv_funpay_account_get_lot_sections(
+      state->account,
+      &sections,
+      &section_count,
+      &error);
+  fpv_funpay_error_clear(&error);
+  if (result != FPV_OK || section_count == 0) {
+    fpv_free(sections);
+    return 0;
+  }
+  uint64_t found_id = 0;
+  for (size_t i = 0; i < section_count && found_id == 0; i++) {
+    fpv_lot_t** lots = NULL;
+    size_t lot_count = 0;
+    memset(&error, 0, sizeof(error));
+    result = fpv_funpay_account_get_trade_lots(
+        state->account,
+        sections[i].id,
+        sections[i].is_currency,
+        &lots,
+        &lot_count,
+        &error);
+    fpv_funpay_error_clear(&error);
+    if (result != FPV_OK || lot_count == 0) {
+      fpv_free(lots);
+      continue;
+    }
+    for (size_t j = 0; j < lot_count; j++) {
+      fpv_lot_t* lot = lots[j];
+      if (!lot || !lot->id) {
+        continue;
+      }
+      if (strcmp(lot->id, lot_name) == 0 ||
+          (lot->title && strstr(lot->title, lot_name))) {
+        found_id = strtoull(lot->id, NULL, 10);
+        break;
+      }
+    }
+    for (size_t j = 0; j < lot_count; j++) {
+      fpv_lot_destroy(lots[j]);
+    }
+    fpv_free(lots);
+  }
+  fpv_free(sections);
+  return found_id;
+}
+
+typedef struct fpv_timed_update_task {
+  fpv_feature_state_t* state;
+  uint64_t lot_id;
+  uint64_t expires_at_ms;
+  char* products_path;
+} fpv_timed_update_task_t;
+
+static bool fpv_lot_matches_name(
+    const fpv_lot_t* lot,
+    const char* lot_name) {
+  if (!lot || !lot_name || !lot_name[0]) {
+    return false;
+  }
+  if (lot->id && strcmp(lot->id, lot_name) == 0) {
+    return true;
+  }
+  if (lot->title && strstr(lot->title, lot_name)) {
+    return true;
+  }
+
+  const char* title_raw = lot->title ? lot->title : "";
+  size_t title_len = strlen(title_raw);
+  size_t name_len = strlen(lot_name);
+  char* title_norm = (char*)malloc(title_len + 1);
+  char* name_norm = (char*)malloc(name_len + 1);
+  if (!title_norm || !name_norm) {
+    fpv_free(title_norm);
+    fpv_free(name_norm);
+    return false;
+  }
+
+  size_t out_len = 0;
+  bool saw_space = false;
+  for (size_t i = 0; i < title_len; i++) {
+    unsigned char ch = (unsigned char)title_raw[i];
+    if (isspace(ch)) {
+      saw_space = true;
+      continue;
+    }
+    if (saw_space && out_len > 0) {
+      title_norm[out_len++] = ' ';
+    }
+    saw_space = false;
+    title_norm[out_len++] = (char)ch;
+  }
+  title_norm[out_len] = '\0';
+
+  out_len = 0;
+  saw_space = false;
+  for (size_t i = 0; i < name_len; i++) {
+    unsigned char ch = (unsigned char)lot_name[i];
+    if (isspace(ch)) {
+      saw_space = true;
+      continue;
+    }
+    if (saw_space && out_len > 0) {
+      name_norm[out_len++] = ' ';
+    }
+    saw_space = false;
+    name_norm[out_len++] = (char)ch;
+  }
+  name_norm[out_len] = '\0';
+
+  bool matches = false;
+  if (title_norm[0] && name_norm[0]) {
+    matches = strstr(title_norm, name_norm) != NULL ||
+        strstr(name_norm, title_norm) != NULL;
+  }
+  fpv_free(title_norm);
+  fpv_free(name_norm);
+  return matches;
+}
+
+static void fpv_features_schedule_timed_update(
+    fpv_feature_state_t* state,
+    uint64_t lot_id,
+    uint64_t expires_at_ms,
+    const char* products_path);
+
+static void fpv_features_timed_update_task(void* context) {
+  fpv_timed_update_task_t* task = (fpv_timed_update_task_t*)context;
+  if (!task) {
+    return;
+  }
+  fpv_feature_state_t* state = task->state;
+  if (!state || !state->scheduler || !state->account) {
+    fpv_free(task->products_path);
+    fpv_free(task);
+    return;
+  }
+
+  uint64_t latest_expire =
+      fpv_timed_entries_latest_expire(state, task->lot_id);
+  if (latest_expire == 0 || latest_expire != task->expires_at_ms) {
+    fpv_free(task->products_path);
+    fpv_free(task);
+    return;
+  }
+
+  uint64_t now_ms = fpv_time_now_ms();
+  if (now_ms < task->expires_at_ms) {
+    fpv_features_schedule_timed_update(
+        state,
+        task->lot_id,
+        task->expires_at_ms,
+        task->products_path);
+    fpv_free(task->products_path);
+    fpv_free(task);
+    return;
+  }
+
+  char* product = NULL;
+  size_t remaining = 0;
+  fpv_result_t peek_result = fpv_products_peek(
+      task->products_path,
+      &product,
+      &remaining);
+  char* secrets = NULL;
+  if (peek_result == FPV_OK && product) {
+    secrets = fpv_unescape_product(product);
+  } else {
+    secrets = fpv_strdup("");
+  }
+  bool ok = fpv_features_set_lot_secrets(
+      state,
+      task->lot_id,
+      secrets ? secrets : "");
+  fpv_free(product);
+  fpv_free(secrets);
+
+  if (ok) {
+    fpv_timed_entries_remove_lot(state, task->lot_id);
+  } else {
+    fpv_features_schedule_timed_update(
+        state,
+        task->lot_id,
+        task->expires_at_ms,
+        task->products_path);
+  }
+
+  fpv_free(task->products_path);
+  fpv_free(task);
+}
+
+static void fpv_features_schedule_timed_update(
+    fpv_feature_state_t* state,
+    uint64_t lot_id,
+    uint64_t expires_at_ms,
+    const char* products_path) {
+  if (!state || !state->scheduler || lot_id == 0 || !products_path) {
+    return;
+  }
+  fpv_timed_update_task_t* task =
+      (fpv_timed_update_task_t*)calloc(1, sizeof(*task));
+  if (!task) {
+    return;
+  }
+  task->state = state;
+  task->lot_id = lot_id;
+  task->expires_at_ms = expires_at_ms;
+  task->products_path = fpv_strdup(products_path);
+  if (!task->products_path) {
+    fpv_free(task);
+    return;
+  }
+
+  uint64_t now_ms = fpv_time_now_ms();
+  uint64_t delay_ms = expires_at_ms > now_ms ? expires_at_ms - now_ms : 0;
+  uint32_t delay =
+      delay_ms > UINT32_MAX ? UINT32_MAX : (uint32_t)delay_ms;
+  fpv_scheduler_schedule_delay(
+      state->scheduler,
+      delay,
+      fpv_features_timed_update_task,
+      task);
+}
+
+typedef struct fpv_lot_secrets_config_entry {
+  char* lot_name;
+  char* products_file;
+} fpv_lot_secrets_config_entry_t;
+
+static char* fpv_features_read_products_file(const char* path) {
+  if (!path || !fpv_fs_exists(path)) {
+    return NULL;
+  }
+  FILE* file = fopen(path, "rb");
+  if (!file) {
+    return NULL;
+  }
+  if (fseek(file, 0, SEEK_END) != 0) {
+    fclose(file);
+    return NULL;
+  }
+  long size = ftell(file);
+  if (size < 0) {
+    fclose(file);
+    return NULL;
+  }
+  if (fseek(file, 0, SEEK_SET) != 0) {
+    fclose(file);
+    return NULL;
+  }
+  char* content = (char*)malloc((size_t)size + 1);
+  if (!content) {
+    fclose(file);
+    return NULL;
+  }
+  size_t read_count = fread(content, 1, (size_t)size, file);
+  fclose(file);
+  content[read_count] = '\0';
+
+  char* buffer = NULL;
+  size_t length = 0;
+  size_t capacity = 0;
+  char* start = content;
+  for (char* ptr = content; ; ptr++) {
+    if (*ptr == '\n' || *ptr == '\0') {
+      char* end = ptr;
+      if (end > start && end[-1] == '\r') {
+        end--;
+      }
+      if (end > start) {
+        if (length > 0) {
+          if (!fpv_buffer_append_char(&buffer, &length, &capacity, '\n')) {
+            fpv_free(buffer);
+            fpv_free(content);
+            return NULL;
+          }
+        }
+        if (!fpv_buffer_append(
+                &buffer,
+                &length,
+                &capacity,
+                start,
+                (size_t)(end - start))) {
+          fpv_free(buffer);
+          fpv_free(content);
+          return NULL;
+        }
+      }
+      start = ptr + 1;
+      if (*ptr == '\0') {
+        break;
+      }
+    }
+  }
+  fpv_free(content);
+
+  if (!buffer) {
+    return fpv_strdup("");
+  }
+  return buffer;
+}
+
+static void fpv_features_sync_auto_delivery_secrets(
+    fpv_feature_state_t* state) {
+  if (!state || !state->account || !state->products_dir) {
+    fpv_features_log(
+        state,
+        FPV_LOG_WARNING,
+        "Auto-delivery secrets sync skipped: account or products dir missing.");
+    return;
+  }
+  if (!state->flags.auto_delivery) {
+    fpv_features_log(
+        state,
+        FPV_LOG_INFO,
+        "Auto-delivery secrets sync skipped: auto-delivery disabled.");
+    return;
+  }
+
+  fpv_lot_secrets_config_entry_t* configs = NULL;
+  size_t config_count = 0;
+  size_t skipped_no_name = 0;
+  size_t skipped_no_products = 0;
+  size_t skipped_timed = 0;
+  size_t total_entries = 0;
+
+  fpv_features_config_lock(state);
+  total_entries = state->auto_delivery.count;
+  for (size_t i = 0; i < state->auto_delivery.count; i++) {
+    const fpv_auto_delivery_lot_t* lot = &state->auto_delivery.lots[i];
+    if (!lot->lot_name || !lot->lot_name[0]) {
+      skipped_no_name++;
+      continue;
+    }
+    if (!lot->products_file || !lot->products_file[0]) {
+      skipped_no_products++;
+      continue;
+    }
+    if (lot->timed) {
+      skipped_timed++;
+      continue;
+    }
+    fpv_lot_secrets_config_entry_t* grown =
+        (fpv_lot_secrets_config_entry_t*)realloc(
+            configs,
+            (config_count + 1) * sizeof(*grown));
+    if (!grown) {
+      break;
+    }
+    configs = grown;
+    configs[config_count].lot_name = fpv_strdup(lot->lot_name);
+    configs[config_count].products_file = fpv_strdup(lot->products_file);
+    if (!configs[config_count].lot_name ||
+        !configs[config_count].products_file) {
+      fpv_free(configs[config_count].lot_name);
+      fpv_free(configs[config_count].products_file);
+      continue;
+    }
+    config_count++;
+  }
+  fpv_features_config_unlock(state);
+
+  if (config_count == 0) {
+    char log_buf[160];
+    snprintf(
+        log_buf,
+        sizeof(log_buf),
+        "Auto-delivery secrets sync: entries=%zu included=0 skipped_no_name=%zu skipped_no_products=%zu skipped_timed=%zu.",
+        total_entries,
+        skipped_no_name,
+        skipped_no_products,
+        skipped_timed);
+    fpv_features_log(state, FPV_LOG_INFO, log_buf);
+    fpv_free(configs);
+    return;
+  }
+
+  char log_buf[128];
+  snprintf(log_buf, sizeof(log_buf),
+           "Auto-delivery secrets sync: entries=%zu included=%zu skipped_no_name=%zu skipped_no_products=%zu skipped_timed=%zu.",
+           total_entries,
+           config_count,
+           skipped_no_name,
+           skipped_no_products,
+           skipped_timed);
+  fpv_features_log(state, FPV_LOG_INFO, log_buf);
+
+  bool* matched = (bool*)calloc(config_count, sizeof(*matched));
+  if (!matched) {
+    for (size_t i = 0; i < config_count; i++) {
+      fpv_free(configs[i].lot_name);
+      fpv_free(configs[i].products_file);
+    }
+    fpv_free(configs);
+    return;
+  }
+
+  fpv_funpay_lot_section_t* sections = NULL;
+  size_t section_count = 0;
+  fpv_funpay_error_t error;
+  memset(&error, 0, sizeof(error));
+  fpv_result_t result = fpv_funpay_account_get_lot_sections(
+      state->account,
+      &sections,
+      &section_count,
+      &error);
+  fpv_funpay_error_clear(&error);
+  if (result != FPV_OK || section_count == 0) {
+    fpv_free(sections);
+    fpv_free(matched);
+    for (size_t i = 0; i < config_count; i++) {
+      fpv_free(configs[i].lot_name);
+      fpv_free(configs[i].products_file);
+    }
+    fpv_free(configs);
+    return;
+  }
+
+  for (size_t i = 0; i < section_count; i++) {
+    fpv_lot_t** lots = NULL;
+    size_t lot_count = 0;
+    memset(&error, 0, sizeof(error));
+    result = fpv_funpay_account_get_trade_lots(
+        state->account,
+        sections[i].id,
+        sections[i].is_currency,
+        &lots,
+        &lot_count,
+        &error);
+    fpv_funpay_error_clear(&error);
+    if (result != FPV_OK || lot_count == 0) {
+      fpv_free(lots);
+      continue;
+    }
+
+    for (size_t j = 0; j < lot_count; j++) {
+      fpv_lot_t* lot = lots[j];
+      if (!lot || !lot->id) {
+        continue;
+      }
+      uint64_t lot_id = strtoull(lot->id, NULL, 10);
+      if (lot_id == 0) {
+        continue;
+      }
+      for (size_t c = 0; c < config_count; c++) {
+        if (matched[c]) {
+          continue;
+        }
+        if (!fpv_lot_matches_name(lot, configs[c].lot_name)) {
+          continue;
+        }
+        matched[c] = true;
+        char* products_path = fpv_path_join(
+            state->products_dir,
+            configs[c].products_file);
+        if (!products_path) {
+          snprintf(log_buf, sizeof(log_buf),
+                   "Auto-delivery secrets sync: lot_id=%" PRIu64 " missing products path.",
+                   lot_id);
+          fpv_features_log(state, FPV_LOG_WARNING, log_buf);
+          continue;
+        }
+        char* secrets = fpv_features_read_products_file(products_path);
+        if (!secrets) {
+          snprintf(log_buf, sizeof(log_buf),
+                   "Auto-delivery secrets sync: lot_id=%" PRIu64 " read failed (%s).",
+                   lot_id,
+                   configs[c].products_file);
+          fpv_features_log(state, FPV_LOG_WARNING, log_buf);
+          fpv_free(products_path);
+          continue;
+        }
+        size_t secrets_len = strlen(secrets);
+        snprintf(log_buf, sizeof(log_buf),
+                 "Auto-delivery secrets sync: lot_id=%" PRIu64 " secrets_len=%zu file=%s.",
+                 lot_id,
+                 secrets_len,
+                 configs[c].products_file);
+        fpv_features_log(state, FPV_LOG_INFO, log_buf);
+        bool ok = fpv_features_set_lot_secrets(state, lot_id, secrets);
+        if (!ok) {
+          snprintf(log_buf, sizeof(log_buf),
+                   "Auto-delivery secrets sync: lot_id=%" PRIu64 " update failed.",
+                   lot_id);
+          fpv_features_log(state, FPV_LOG_WARNING, log_buf);
+        }
+        fpv_free(secrets);
+        fpv_free(products_path);
+        break;
+      }
+    }
+
+    for (size_t j = 0; j < lot_count; j++) {
+      fpv_lot_destroy(lots[j]);
+    }
+    fpv_free(lots);
+  }
+
+  fpv_free(sections);
+  size_t matched_count = 0;
+  for (size_t i = 0; i < config_count; i++) {
+    if (matched[i]) {
+      matched_count++;
+    }
+  }
+  snprintf(log_buf, sizeof(log_buf),
+           "Auto-delivery secrets sync: matched=%zu/%zu.",
+           matched_count,
+           config_count);
+  fpv_features_log(state, FPV_LOG_INFO, log_buf);
+  fpv_free(matched);
+  for (size_t i = 0; i < config_count; i++) {
+    fpv_free(configs[i].lot_name);
+    fpv_free(configs[i].products_file);
+  }
+  fpv_free(configs);
+}
+
+static void fpv_features_sync_timed_secrets(fpv_feature_state_t* state) {
+  if (!state || !state->account || !state->products_dir) {
+    return;
+  }
+  if (!state->flags.auto_delivery) {
+    return;
+  }
+
+  typedef struct fpv_timed_config_entry {
+    char* lot_name;
+    char* products_file;
+  } fpv_timed_config_entry_t;
+
+  fpv_timed_config_entry_t* configs = NULL;
+  size_t config_count = 0;
+
+  fpv_features_config_lock(state);
+  for (size_t i = 0; i < state->auto_delivery.count; i++) {
+    const fpv_auto_delivery_lot_t* lot = &state->auto_delivery.lots[i];
+    if (!lot->timed) {
+      continue;
+    }
+    if (lot->disable || lot->disable_auto_delivery) {
+      continue;
+    }
+    if (!lot->lot_name || !lot->lot_name[0]) {
+      continue;
+    }
+    if (!lot->products_file || !lot->products_file[0]) {
+      continue;
+    }
+    fpv_timed_config_entry_t* grown =
+        (fpv_timed_config_entry_t*)realloc(
+            configs,
+            (config_count + 1) * sizeof(*grown));
+    if (!grown) {
+      break;
+    }
+    configs = grown;
+    configs[config_count].lot_name = fpv_strdup(lot->lot_name);
+    configs[config_count].products_file = fpv_strdup(lot->products_file);
+    if (!configs[config_count].lot_name ||
+        !configs[config_count].products_file) {
+      fpv_free(configs[config_count].lot_name);
+      fpv_free(configs[config_count].products_file);
+      continue;
+    }
+    config_count++;
+  }
+  fpv_features_config_unlock(state);
+
+  if (config_count == 0) {
+    fpv_free(configs);
+    return;
+  }
+
+  bool* matched = (bool*)calloc(config_count, sizeof(*matched));
+  if (!matched) {
+    for (size_t i = 0; i < config_count; i++) {
+      fpv_free(configs[i].lot_name);
+      fpv_free(configs[i].products_file);
+    }
+    fpv_free(configs);
+    return;
+  }
+
+  uint64_t now_ms = fpv_time_now_ms();
+  fpv_funpay_lot_section_t* sections = NULL;
+  size_t section_count = 0;
+  fpv_funpay_error_t error;
+  memset(&error, 0, sizeof(error));
+  fpv_result_t result = fpv_funpay_account_get_lot_sections(
+      state->account,
+      &sections,
+      &section_count,
+      &error);
+  fpv_funpay_error_clear(&error);
+  if (result != FPV_OK || section_count == 0) {
+    fpv_free(sections);
+    fpv_free(matched);
+    for (size_t i = 0; i < config_count; i++) {
+      fpv_free(configs[i].lot_name);
+      fpv_free(configs[i].products_file);
+    }
+    fpv_free(configs);
+    return;
+  }
+
+  for (size_t i = 0; i < section_count; i++) {
+    fpv_lot_t** lots = NULL;
+    size_t lot_count = 0;
+    memset(&error, 0, sizeof(error));
+    result = fpv_funpay_account_get_trade_lots(
+        state->account,
+        sections[i].id,
+        sections[i].is_currency,
+        &lots,
+        &lot_count,
+        &error);
+    fpv_funpay_error_clear(&error);
+    if (result != FPV_OK || lot_count == 0) {
+      fpv_free(lots);
+      continue;
+    }
+
+    for (size_t j = 0; j < lot_count; j++) {
+      fpv_lot_t* lot = lots[j];
+      if (!lot || !lot->id) {
+        continue;
+      }
+      uint64_t lot_id = strtoull(lot->id, NULL, 10);
+      if (lot_id == 0) {
+        continue;
+      }
+      if (fpv_timed_entries_latest_expire(state, lot_id) > now_ms) {
+        continue;
+      }
+      for (size_t c = 0; c < config_count; c++) {
+        if (matched[c]) {
+          continue;
+        }
+        if (!fpv_lot_matches_name(lot, configs[c].lot_name)) {
+          continue;
+        }
+        matched[c] = true;
+        char* products_path = fpv_path_join(
+            state->products_dir,
+            configs[c].products_file);
+        if (!products_path) {
+          continue;
+        }
+        char* product = NULL;
+        size_t remaining = 0;
+        fpv_result_t peek_result = fpv_products_peek(
+            products_path,
+            &product,
+            &remaining);
+        char* secrets = NULL;
+        if (peek_result == FPV_OK && product) {
+          secrets = fpv_unescape_product(product);
+        } else {
+          secrets = fpv_strdup("");
+        }
+        fpv_features_set_lot_secrets(
+            state,
+            lot_id,
+            secrets ? secrets : "");
+        fpv_free(product);
+        fpv_free(secrets);
+        fpv_free(products_path);
+      }
+    }
+
+    for (size_t j = 0; j < lot_count; j++) {
+      fpv_lot_destroy(lots[j]);
+    }
+    fpv_free(lots);
+  }
+
+  fpv_free(sections);
+  fpv_free(matched);
+  for (size_t i = 0; i < config_count; i++) {
+    fpv_free(configs[i].lot_name);
+    fpv_free(configs[i].products_file);
+  }
+  fpv_free(configs);
+}
+
+static void fpv_features_lot_secrets_sync_task(void* context) {
+  fpv_feature_state_t* state = (fpv_feature_state_t*)context;
+  fpv_features_sync_auto_delivery_secrets(state);
+}
+
+static void fpv_features_timed_sync_task(void* context) {
+  fpv_feature_state_t* state = (fpv_feature_state_t*)context;
+  fpv_features_sync_timed_secrets(state);
+}
+
+void fpv_features_queue_lot_secrets_sync(fpv_feature_state_t* state) {
+  if (!state || !state->scheduler) {
+    fpv_features_log(
+        state,
+        FPV_LOG_WARNING,
+        "Auto-delivery secrets sync not queued: scheduler unavailable.");
+    return;
+  }
+  fpv_features_log(
+      state,
+      FPV_LOG_INFO,
+      "Auto-delivery secrets sync queued.");
+  fpv_scheduler_enqueue(state->scheduler, fpv_features_lot_secrets_sync_task, state);
+}
+
+void fpv_features_queue_timed_sync(fpv_feature_state_t* state) {
+  if (!state || !state->scheduler) {
+    return;
+  }
+  fpv_scheduler_enqueue(state->scheduler, fpv_features_timed_sync_task, state);
+}
+
 static fpv_features_system_type_t fpv_features_system_type(
     const char* text) {
   if (!text || !text[0]) {
@@ -668,6 +1562,34 @@ static void fpv_features_handle_message(
     fpv_features_handle_system_message(state, message, chat_id);
   }
 
+  if (state->flags.auto_delivery && chat_id > 0 && !its_me && !is_system) {
+    char* timed_response = fpv_timed_entries_response_for_chat(
+        state,
+        chat_id,
+        fpv_time_now_ms());
+    if (timed_response && timed_response[0]) {
+      const char* username = message->sender_name;
+      if (!state->flags.block_response || !username ||
+          !fpv_list_contains_string(&state->blacklist, username)) {
+        fpv_features_queue_message(
+            state,
+            chat_id,
+            message->chat_name,
+            timed_response,
+            true,
+            NULL,
+            0,
+            NULL,
+            false,
+            NULL,
+            NULL);
+      }
+      fpv_free(timed_response);
+      return;
+    }
+    fpv_free(timed_response);
+  }
+
   const char* msg_text = message->text;
   if ((!msg_text || !msg_text[0]) &&
       (!message->image_url || !message->image_url[0])) {
@@ -1092,8 +2014,11 @@ static void fpv_features_handle_order(
   bool lot_disable = false;
   bool lot_disable_auto_delivery = false;
   bool lot_disable_multi_delivery = false;
+  bool lot_timed = false;
+  uint32_t lot_timer_hours = 0;
   char* lot_response = NULL;
   char* lot_products_file = NULL;
+  char* lot_config_name = NULL;
   fpv_features_config_lock(state);
   const fpv_auto_delivery_lot_t* lot =
       fpv_auto_delivery_find(&state->auto_delivery, order_title);
@@ -1102,11 +2027,16 @@ static void fpv_features_handle_order(
     lot_disable = lot->disable;
     lot_disable_auto_delivery = lot->disable_auto_delivery;
     lot_disable_multi_delivery = lot->disable_multi_delivery;
+    lot_timed = lot->timed;
+    lot_timer_hours = lot->timer_hours;
     if (lot->response) {
       lot_response = fpv_strdup(lot->response);
     }
     if (lot->products_file && lot->products_file[0]) {
       lot_products_file = fpv_strdup(lot->products_file);
+    }
+    if (lot->lot_name && lot->lot_name[0]) {
+      lot_config_name = fpv_strdup(lot->lot_name);
     }
   }
   fpv_features_config_unlock(state);
@@ -1170,6 +2100,74 @@ static void fpv_features_handle_order(
   }
 
   if (!delivery_allowed || !state->account) {
+    goto cleanup;
+  }
+
+  if (lot_timed) {
+    if (!lot_products_file || !lot_products_file[0] || !state->products_dir) {
+      if (state->telegram && order_id[0]) {
+        fpv_features_notify_delivery_error(state, order_id, buyer);
+      }
+      goto cleanup;
+    }
+    uint64_t lot_id = 0;
+    if (order->lot_id && order->lot_id[0]) {
+      lot_id = strtoull(order->lot_id, NULL, 10);
+    }
+    if (lot_id == 0 && lot_config_name && lot_config_name[0]) {
+      lot_id = fpv_features_find_lot_id_by_name(state, lot_config_name);
+    }
+    if (lot_id == 0) {
+      if (state->telegram && order_id[0]) {
+        fpv_features_notify_delivery_error(state, order_id, buyer);
+      }
+      goto cleanup;
+    }
+
+    products_path = fpv_path_join(state->products_dir, lot_products_file);
+    if (!products_path) {
+      if (state->telegram && order_id[0]) {
+        fpv_features_notify_delivery_error(state, order_id, buyer);
+      }
+      goto cleanup;
+    }
+
+    size_t remaining = 0;
+    fpv_result_t take_result = fpv_products_take(
+        products_path,
+        1,
+        &products,
+        &products_count,
+        &remaining);
+    if (take_result != FPV_OK) {
+      if (state->telegram && order_id[0]) {
+        fpv_features_notify_delivery_error(state, order_id, buyer);
+      }
+      goto cleanup;
+    }
+
+    fpv_products_free(products, products_count);
+    products = NULL;
+    products_count = 0;
+
+    fpv_features_set_lot_secrets(state, lot_id, "");
+
+    uint64_t now_ms = fpv_time_now_ms();
+    uint64_t delay_ms = (uint64_t)lot_timer_hours * 3600ULL * 1000ULL;
+    uint64_t expires_at_ms = now_ms + delay_ms;
+    if (chat_id > 0 && lot_response && lot_response[0]) {
+      fpv_timed_entries_add(
+          state,
+          chat_id,
+          lot_id,
+          expires_at_ms,
+          lot_response);
+    }
+    fpv_features_schedule_timed_update(
+        state,
+        lot_id,
+        expires_at_ms,
+        products_path);
     goto cleanup;
   }
 
@@ -1266,8 +2264,12 @@ static void fpv_features_handle_order(
             strlen(cursor));
       }
     }
+    char* normalized = fpv_replace_all(delivery_text, "$products", "$product");
     char* with_products =
-        fpv_replace_all(delivery_text, "$product", joined ? joined : "");
+        fpv_replace_all(normalized ? normalized : delivery_text,
+                        "$product",
+                        joined ? joined : "");
+    fpv_free(normalized);
     fpv_free(joined);
     fpv_free(delivery_text);
     delivery_text = with_products;
@@ -1330,6 +2332,7 @@ cleanup:
   fpv_free(products_path);
   fpv_free(lot_response);
   fpv_free(lot_products_file);
+  fpv_free(lot_config_name);
 finish:
   if (wants_lot_update && !update_queued) {
     fpv_features_queue_lot_update(state, runner_tag);

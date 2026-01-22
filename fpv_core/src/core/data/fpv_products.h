@@ -14,6 +14,10 @@ fpv_result_t fpv_products_take(
     char*** out_products,
     size_t* out_count,
     size_t* out_remaining);
+fpv_result_t fpv_products_peek(
+    const char* path,
+    char** out_product,
+    size_t* out_remaining);
 fpv_result_t fpv_products_restore(
     const char* path,
     char** products,

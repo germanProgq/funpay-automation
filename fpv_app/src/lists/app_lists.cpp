@@ -955,9 +955,12 @@ void refresh_lot_list(AppContext* context) {
     GtkWidget* box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
     GtkWidget* info = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
 
-    gchar* title_text = sanitize_utf8(lot->title ? lot->title : "Lot");
+    gchar* title_text = normalize_whitespace(
+        lot->title ? lot->title : "Lot");
     GtkWidget* title = gtk_label_new(title_text);
     gtk_label_set_xalign(GTK_LABEL(title), 0.0f);
+    gtk_label_set_single_line_mode(GTK_LABEL(title), TRUE);
+    gtk_label_set_ellipsize(GTK_LABEL(title), PANGO_ELLIPSIZE_END);
 
     gchar* meta = g_strdup_printf(
         "ID: %s · Stock: %u",

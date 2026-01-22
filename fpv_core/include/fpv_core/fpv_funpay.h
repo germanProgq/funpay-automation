@@ -209,6 +209,11 @@ FPV_CORE_API fpv_result_t fpv_funpay_account_set_lot_active(
     uint64_t lot_id,
     bool active,
     fpv_funpay_error_t* error);
+FPV_CORE_API fpv_result_t fpv_funpay_account_set_lot_secrets(
+    fpv_funpay_account_t* account,
+    uint64_t lot_id,
+    const char* secrets,
+    fpv_funpay_error_t* error);
 FPV_CORE_API fpv_result_t fpv_funpay_account_clone_lot(
     fpv_funpay_account_t* account,
     uint64_t lot_id,

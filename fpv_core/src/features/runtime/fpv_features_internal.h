@@ -30,6 +30,13 @@ typedef struct fpv_raise_entry {
   uint64_t next_raise_ms;
 } fpv_raise_entry_t;
 
+typedef struct fpv_timed_lot_entry {
+  uint64_t lot_id;
+  uint64_t chat_id;
+  uint64_t expires_at_ms;
+  char* response;
+} fpv_timed_lot_entry_t;
+
 typedef struct fpv_feature_flags {
   bool auto_raise;
   bool auto_response;
@@ -94,6 +101,9 @@ struct fpv_feature_state {
   bool lot_update_pending;
   char* last_lot_update_tag;
   char* pending_lot_update_tag;
+  fpv_mutex_t timed_mutex;
+  fpv_timed_lot_entry_t* timed_entries;
+  size_t timed_count;
 };
 
 typedef enum fpv_message_entity_type {
@@ -182,5 +192,7 @@ bool fpv_features_queue_message(
 void fpv_features_queue_lot_update(
     fpv_feature_state_t* state,
     const char* runner_tag);
+void fpv_features_queue_lot_secrets_sync(fpv_feature_state_t* state);
+void fpv_features_queue_timed_sync(fpv_feature_state_t* state);
 
 #endif

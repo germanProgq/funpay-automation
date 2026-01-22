@@ -55,6 +55,31 @@ gchar* sanitize_utf8(const char* text) {
   return g_utf8_make_valid(text, -1);
 }
 
+gchar* normalize_whitespace(const char* text) {
+  gchar* safe = sanitize_utf8(text);
+  if (!safe) {
+    return g_strdup("");
+  }
+
+  GString* out = g_string_sized_new(strlen(safe));
+  gboolean saw_space = FALSE;
+  for (const gchar* p = safe; *p; p = g_utf8_next_char(p)) {
+    gunichar ch = g_utf8_get_char(p);
+    if (g_unichar_isspace(ch)) {
+      saw_space = TRUE;
+      continue;
+    }
+    if (saw_space && out->len > 0) {
+      g_string_append_c(out, ' ');
+    }
+    saw_space = FALSE;
+    g_string_append_unichar(out, ch);
+  }
+
+  g_free(safe);
+  return g_string_free(out, FALSE);
+}
+
 char* app_strdup(const char* value) {
   if (!value) {
     return NULL;
@@ -323,10 +348,10 @@ void apply_css(GtkWidget* window) {
       "row:selected:focus-within .muted { color: #1f1f1f; }"
       "entry selection { background-color: #e6e1da; color: #1f1f1f; }"
       "label selection { background-color: #e6e1da; color: #1f1f1f; }"
-      ".rating-star { color: #f6b400; font-weight: 600; }";
+  ".rating-star { color: #f6b400; font-weight: 600; }";
 
   GtkCssProvider* provider = gtk_css_provider_new();
-  gtk_css_provider_load_from_data(provider, css, -1);
+  gtk_css_provider_load_from_string(provider, css);
   gtk_style_context_add_provider_for_display(
       gtk_widget_get_display(window),
       GTK_STYLE_PROVIDER(provider),

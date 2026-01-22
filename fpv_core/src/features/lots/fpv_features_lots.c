@@ -114,6 +114,7 @@ static void fpv_features_update_lot_states(fpv_feature_state_t* state) {
       bool config_found = false;
       bool disable_restore = false;
       bool disable_disable = false;
+      bool lot_timed = false;
       char* products_file = NULL;
       fpv_features_config_lock(state);
       const fpv_auto_delivery_lot_t* config =
@@ -122,6 +123,7 @@ static void fpv_features_update_lot_states(fpv_feature_state_t* state) {
         config_found = true;
         disable_restore = config->disable_auto_restore;
         disable_disable = config->disable_auto_disable;
+        lot_timed = config->timed;
         if (config->products_file && config->products_file[0]) {
           products_file = fpv_strdup(config->products_file);
         }
@@ -196,8 +198,8 @@ static void fpv_features_update_lot_states(fpv_feature_state_t* state) {
       }
 
       bool should_deactivate = false;
-      if (lot->active && state->flags.auto_disable && config_found &&
-          !disable_disable && has_products &&
+      if (!lot_timed && lot->active && state->flags.auto_disable &&
+          config_found && !disable_disable && has_products &&
           products_count == 0) {
         should_deactivate = true;
       }

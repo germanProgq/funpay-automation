@@ -293,6 +293,8 @@ static fpv_result_t fpv_auto_delivery_append(
     const char* lot_name,
     const char* response,
     const char* products_file,
+    bool timed,
+    uint32_t timer_hours,
     bool disable,
     bool disable_auto_restore,
     bool disable_auto_disable,
@@ -312,6 +314,8 @@ static fpv_result_t fpv_auto_delivery_append(
   if (products_file && products_file[0]) {
     entry->products_file = fpv_strdup(products_file);
   }
+  entry->timed = timed;
+  entry->timer_hours = timer_hours;
   entry->disable = disable;
   entry->disable_auto_restore = disable_auto_restore;
   entry->disable_auto_disable = disable_auto_disable;
@@ -354,12 +358,51 @@ fpv_result_t fpv_auto_delivery_config_load(
       return FPV_ERR_PARSE;
     }
 
+    const char* timed_value = fpv_ini_get(ini, section, "timed");
+    bool timed = false;
+    if (timed_value && timed_value[0] &&
+        !fpv_parse_bool(timed_value, &timed)) {
+      fpv_auto_delivery_config_destroy(config);
+      fpv_ini_destroy(ini);
+      return FPV_ERR_PARSE;
+    }
+    const char* timer_value = fpv_ini_get(ini, section, "timerHours");
+    uint32_t timer_hours = 0;
+    if (timer_value && timer_value[0]) {
+      char* end = NULL;
+      unsigned long parsed = strtoul(timer_value, &end, 10);
+      if (!end || *end != '\0') {
+        fpv_auto_delivery_config_destroy(config);
+        fpv_ini_destroy(ini);
+        return FPV_ERR_PARSE;
+      }
+      if (parsed > UINT32_MAX) {
+        fpv_auto_delivery_config_destroy(config);
+        fpv_ini_destroy(ini);
+        return FPV_ERR_PARSE;
+      }
+      timer_hours = (uint32_t)parsed;
+    }
+
     const char* products_file =
         fpv_ini_get(ini, section, "productsFileName");
     if (products_file && !products_file[0]) {
       fpv_auto_delivery_config_destroy(config);
       fpv_ini_destroy(ini);
       return FPV_ERR_PARSE;
+    }
+
+    if (timed) {
+      if (!products_file || !products_file[0]) {
+        fpv_auto_delivery_config_destroy(config);
+        fpv_ini_destroy(ini);
+        return FPV_ERR_PARSE;
+      }
+      if (timer_hours == 0) {
+        fpv_auto_delivery_config_destroy(config);
+        fpv_ini_destroy(ini);
+        return FPV_ERR_PARSE;
+      }
     }
 
     if (products_file && products_file[0]) {
@@ -371,7 +414,9 @@ fpv_result_t fpv_auto_delivery_config_load(
         return FPV_ERR_NOT_FOUND;
       }
       fpv_free(full_path);
-      if (!strstr(response, "$product")) {
+      if (!timed &&
+          !strstr(response, "$product") &&
+          !strstr(response, "$products")) {
         fpv_auto_delivery_config_destroy(config);
         fpv_ini_destroy(ini);
         return FPV_ERR_PARSE;
@@ -430,6 +475,8 @@ fpv_result_t fpv_auto_delivery_config_load(
             section,
             response,
             products_file,
+            timed,
+            timer_hours,
             disable,
             disable_auto_restore,
             disable_auto_disable,

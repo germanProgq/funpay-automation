@@ -1232,4 +1232,9 @@ void update_status(
   gtk_widget_set_sensitive(
       context->message_send_button,
       running && context->active_chat_id != NULL);
+  if (running) {
+    start_chat_refresh(context);
+  } else {
+    stop_chat_refresh(context);
+  }
 }

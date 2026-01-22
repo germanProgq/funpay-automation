@@ -354,13 +354,22 @@ char* fpv_funpay_url_encode(const char* value) {
   if (!value) {
     return fpv_strdup("");
   }
+  if (!value[0]) {
+    return fpv_strdup("");
+  }
   fpv_string_builder_t builder;
   fpv_funpay_sb_reset(&builder);
   for (const unsigned char* ptr = (const unsigned char*)value; *ptr; ptr++) {
     if (fpv_funpay_is_unreserved((char)*ptr)) {
-      fpv_funpay_sb_append_n(&builder, (const char*)ptr, 1);
+      if (!fpv_funpay_sb_append_n(&builder, (const char*)ptr, 1)) {
+        fpv_free(builder.data);
+        return NULL;
+      }
     } else {
-      fpv_funpay_sb_append_format(&builder, "%%%02X", *ptr);
+      if (!fpv_funpay_sb_append_format(&builder, "%%%02X", *ptr)) {
+        fpv_free(builder.data);
+        return NULL;
+      }
     }
   }
   return fpv_funpay_sb_detach(&builder);

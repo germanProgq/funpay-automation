@@ -503,7 +503,7 @@ static void fpv_funpay_service_bootstrap(void* context) {
   fpv_funpay_account_set_logger(
       account,
       service->logger,
-      true,
+      false,
       service->bus);
 
   fpv_result_t result = fpv_funpay_account_refresh(account, &error);
@@ -1156,6 +1156,11 @@ fpv_result_t fpv_core_reload_auto_delivery(fpv_core_t* core) {
         FPV_LOG_INFO,
         "Auto-delivery config reloaded.",
         fpv_time_now_ms());
+    fpv_core_emit_log(
+        core,
+        FPV_LOG_INFO,
+        "Auto-delivery secrets sync queued.",
+        fpv_time_now_ms());
   }
   return result;
 }
@@ -1324,11 +1329,20 @@ fpv_result_t fpv_core_set_lot_active(
   fpv_mutex_unlock(&service->mutex);
 
   if (result != FPV_OK) {
-    fpv_core_emit_log(
-        core,
-        FPV_LOG_WARNING,
-        error.message ? error.message : "Lot update failed.",
-        fpv_time_now_ms());
+    char log_buf[512];
+    const char* message = error.message ? error.message : "Lot update failed.";
+    const char* url = error.url ? error.url : "";
+    const char* method = error.method ? error.method : "";
+    snprintf(
+        log_buf,
+        sizeof(log_buf),
+        "Lot update failed: %s (code=%d http=%ld method=%s url=%s).",
+        message,
+        (int)error.code,
+        error.http_status,
+        method,
+        url);
+    fpv_core_emit_log(core, FPV_LOG_WARNING, log_buf, fpv_time_now_ms());
   }
   fpv_funpay_error_clear(&error);
   return result;

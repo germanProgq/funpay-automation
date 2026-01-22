@@ -245,6 +245,71 @@ fpv_result_t fpv_products_take(
   return FPV_OK;
 }
 
+fpv_result_t fpv_products_peek(
+    const char* path,
+    char** out_product,
+    size_t* out_remaining) {
+  if (!path || !out_product) {
+    return FPV_ERR_INVALID_ARGUMENT;
+  }
+  *out_product = NULL;
+  if (out_remaining) {
+    *out_remaining = 0;
+  }
+
+  if (!fpv_fs_exists(path)) {
+    return FPV_ERR_NOT_FOUND;
+  }
+
+  size_t size = 0;
+  char* content = fpv_read_file(path, &size);
+  if (!content) {
+    return FPV_ERR_IO;
+  }
+
+  size_t line_count = 0;
+  char* first_line = NULL;
+  char* start = content;
+  for (char* ptr = content; ; ptr++) {
+    if (*ptr == '\n' || *ptr == '\0') {
+      char* end = ptr;
+      if (end > start && end[-1] == '\r') {
+        end--;
+      }
+      if (end > start) {
+        size_t len = (size_t)(end - start);
+        char* line = fpv_strdup_n(start, len);
+        if (line) {
+          if (fpv_line_has_content(line)) {
+            if (!first_line) {
+              first_line = line;
+            } else {
+              fpv_free(line);
+            }
+            line_count++;
+          } else {
+            fpv_free(line);
+          }
+        }
+      }
+      start = ptr + 1;
+      if (*ptr == '\0') {
+        break;
+      }
+    }
+  }
+  fpv_free(content);
+
+  if (!first_line) {
+    return FPV_ERR_INVALID_STATE;
+  }
+  *out_product = first_line;
+  if (out_remaining) {
+    *out_remaining = line_count > 0 ? line_count - 1 : 0;
+  }
+  return FPV_OK;
+}
+
 fpv_result_t fpv_products_restore(
     const char* path,
     char** products,

@@ -1126,7 +1126,9 @@ bool fpv_tg_handle_ad_edit_delivery_text(
     return true;
   }
   const char* file_name = fpv_ini_get(ini, lot_name, "productsFileName");
-  if (file_name && file_name[0] && !strstr(new_response, "$product")) {
+  if (file_name && file_name[0] &&
+      !strstr(new_response, "$product") &&
+      !strstr(new_response, "$products")) {
     char* reply_markup = fpv_tg_build_ad_edit_done_keyboard(
         service, fpv_tg_cbt_edit_lot_text, lot_index, offset);
     char* escaped = fpv_tg_escape_html(lot_name);
@@ -1286,7 +1288,8 @@ bool fpv_tg_handle_ad_bind_products(
   }
 
   const char* response = fpv_ini_get(ini, lot_name, "response");
-  if (!response || !strstr(response, "$product")) {
+  if (!response ||
+      (!strstr(response, "$product") && !strstr(response, "$products"))) {
     fpv_tg_keyboard_t* err_kb = fpv_tg_keyboard_create(true, false);
     if (err_kb) {
       char back_cb[64];

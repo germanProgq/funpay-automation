@@ -5,6 +5,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include "fpv_core/fpv_result.h"
 
@@ -24,6 +25,8 @@ typedef struct fpv_auto_delivery_lot {
   char* lot_name;
   char* response;
   char* products_file;
+  bool timed;
+  uint32_t timer_hours;
   bool disable;
   bool disable_auto_restore;
   bool disable_auto_disable;

@@ -13,6 +13,17 @@
 
 #include <gtk/gtk.h>
 
+enum {
+  CHAT_REFRESH_TICK_MS = 2000,
+  CHAT_REFRESH_ACTIVE_INTERVAL_MS = 8000,
+  CHAT_REFRESH_WARMUP_TARGET_CYCLE_MS = 120000,
+  CHAT_REFRESH_WARMUP_MIN_INTERVAL_MS = 4000,
+  CHAT_REFRESH_WARMUP_MAX_INTERVAL_MS = 20000,
+  CHAT_REFRESH_BACKGROUND_TARGET_CYCLE_MS = 600000,
+  CHAT_REFRESH_BACKGROUND_MIN_INTERVAL_MS = 15000,
+  CHAT_REFRESH_BACKGROUND_MAX_INTERVAL_MS = 120000
+};
+
 void handle_event(AppContext* context, const fpv_event_t* event) {
   if (!context || !event) {
     return;
@@ -214,6 +225,8 @@ typedef struct ChatHistoryTask {
   gchar* chat_name;
   gchar* org_id;
   gboolean load_cached;
+  gboolean update_memory;
+  gboolean release_refresh;
 } ChatHistoryTask;
 
 typedef struct ChatCacheTask {
@@ -245,6 +258,9 @@ gboolean chat_history_complete(gpointer data) {
   ChatHistoryTask* task = (ChatHistoryTask*)data;
   if (!task || !task->context) {
     return G_SOURCE_REMOVE;
+  }
+  if (task->release_refresh) {
+    task->context->chat_refresh_in_flight = FALSE;
   }
   if (task->context->closing) {
     g_free(task->chat_id);
@@ -346,6 +362,11 @@ gpointer chat_history_thread(gpointer data) {
       &messages,
       &count);
   if (result == FPV_OK) {
+    gboolean update_memory = task->update_memory;
+    if (!update_memory && task->context->active_chat_id &&
+        strcmp(task->context->active_chat_id, task->chat_id) == 0) {
+      update_memory = TRUE;
+    }
     if (task->context->chat_store && task->org_id && task->org_id[0] &&
         messages && count > 0) {
       fpv_chat_store_upsert_messages(
@@ -354,16 +375,22 @@ gpointer chat_history_thread(gpointer data) {
           (const fpv_message_t* const*)messages,
           count);
     }
-    GPtrArray* list = g_ptr_array_new_with_free_func(
-        (GDestroyNotify)fpv_message_destroy);
-    if (list) {
-      for (size_t i = 0; i < count; i++) {
-        g_ptr_array_add(list, messages[i]);
+    if (update_memory) {
+      GPtrArray* list = g_ptr_array_new_with_free_func(
+          (GDestroyNotify)fpv_message_destroy);
+      if (list) {
+        for (size_t i = 0; i < count; i++) {
+          g_ptr_array_add(list, messages[i]);
+        }
+        g_hash_table_replace(
+            task->context->messages_by_chat,
+            g_strdup(task->chat_id),
+            list);
+      } else {
+        for (size_t i = 0; i < count; i++) {
+          fpv_message_destroy(messages[i]);
+        }
       }
-      g_hash_table_replace(
-          task->context->messages_by_chat,
-          g_strdup(task->chat_id),
-          list);
     } else {
       for (size_t i = 0; i < count; i++) {
         fpv_message_destroy(messages[i]);
@@ -375,6 +402,285 @@ gpointer chat_history_thread(gpointer data) {
   }
   g_main_context_invoke(NULL, chat_history_complete, task);
   return NULL;
+}
+
+static void chat_refresh_queue_clear(AppContext* context) {
+  if (!context) {
+    return;
+  }
+  if (context->chat_refresh_queue) {
+    g_ptr_array_free(context->chat_refresh_queue, TRUE);
+    context->chat_refresh_queue = NULL;
+  }
+  context->chat_refresh_index = 0;
+}
+
+static void chat_refresh_queue_rebuild(AppContext* context) {
+  if (!context || !context->chats) {
+    return;
+  }
+
+  chat_refresh_queue_clear(context);
+
+  GPtrArray* queue = g_ptr_array_new_with_free_func(g_free);
+  if (!queue) {
+    return;
+  }
+
+  GHashTableIter iter;
+  gpointer key = NULL;
+  g_hash_table_iter_init(&iter, context->chats);
+  while (g_hash_table_iter_next(&iter, &key, NULL)) {
+    const char* chat_id = (const char*)key;
+    if (chat_id && chat_id[0]) {
+      g_ptr_array_add(queue, g_strdup(chat_id));
+    }
+  }
+
+  if (queue->len == 0) {
+    g_ptr_array_free(queue, TRUE);
+    return;
+  }
+
+  g_ptr_array_sort(queue, (GCompareFunc)g_strcmp0);
+  context->chat_refresh_queue = queue;
+  context->chat_refresh_index = 0;
+}
+
+static guint64 chat_refresh_interval_ms(
+    const AppContext* context,
+    gboolean warmup) {
+  size_t chat_count = 0;
+  if (context && context->chats) {
+    chat_count = g_hash_table_size(context->chats);
+  }
+  guint64 target = warmup
+      ? CHAT_REFRESH_WARMUP_TARGET_CYCLE_MS
+      : CHAT_REFRESH_BACKGROUND_TARGET_CYCLE_MS;
+  guint64 min_interval = warmup
+      ? CHAT_REFRESH_WARMUP_MIN_INTERVAL_MS
+      : CHAT_REFRESH_BACKGROUND_MIN_INTERVAL_MS;
+  guint64 max_interval = warmup
+      ? CHAT_REFRESH_WARMUP_MAX_INTERVAL_MS
+      : CHAT_REFRESH_BACKGROUND_MAX_INTERVAL_MS;
+  if (chat_count == 0) {
+    return max_interval;
+  }
+  guint64 interval = target / chat_count;
+  if (interval < min_interval) {
+    interval = min_interval;
+  }
+  if (interval > max_interval) {
+    interval = max_interval;
+  }
+  return interval;
+}
+
+static const gchar* chat_refresh_pick_next(AppContext* context) {
+  if (!context || !context->chat_refresh_queue ||
+      context->chat_refresh_queue->len == 0) {
+    return NULL;
+  }
+  if (context->chat_refresh_index >= context->chat_refresh_queue->len) {
+    return NULL;
+  }
+  const gchar* chat_id = (const gchar*)g_ptr_array_index(
+      context->chat_refresh_queue,
+      context->chat_refresh_index);
+  context->chat_refresh_index++;
+  return chat_id;
+}
+
+static const gchar* chat_refresh_pick_next_non_active(AppContext* context) {
+  if (!context || !context->chat_refresh_queue ||
+      context->chat_refresh_queue->len == 0) {
+    return NULL;
+  }
+  guint attempts = 0;
+  guint max_attempts = context->chat_refresh_queue->len;
+  while (attempts < max_attempts) {
+    const gchar* chat_id = chat_refresh_pick_next(context);
+    if (!chat_id) {
+      return NULL;
+    }
+    if (context->active_chat_id &&
+        strcmp(context->active_chat_id, chat_id) == 0 &&
+        context->chat_refresh_queue->len > 1) {
+      attempts++;
+      continue;
+    }
+    return chat_id;
+  }
+  return NULL;
+}
+
+static const gchar* chat_refresh_lookup_name(
+    AppContext* context,
+    const gchar* chat_id) {
+  if (!context || !context->chats || !chat_id || !chat_id[0]) {
+    return NULL;
+  }
+  fpv_chat_t* chat = (fpv_chat_t*)g_hash_table_lookup(
+      context->chats,
+      chat_id);
+  return chat ? chat->title : NULL;
+}
+
+static gboolean chat_refresh_schedule(
+    AppContext* context,
+    const gchar* chat_id,
+    const gchar* chat_name,
+    gboolean update_memory) {
+  if (!context || !context->core || !chat_id || !chat_id[0]) {
+    return FALSE;
+  }
+  if (!update_memory) {
+    if (!context->chat_store || !context->current_org ||
+        !context->current_org->id) {
+      return FALSE;
+    }
+  }
+
+  ChatHistoryTask* task = (ChatHistoryTask*)g_new0(ChatHistoryTask, 1);
+  if (!task) {
+    return FALSE;
+  }
+
+  task->context = context;
+  task->chat_id = g_strdup(chat_id);
+  task->chat_name = chat_name ? g_strdup(chat_name) : NULL;
+  task->org_id = context->current_org && context->current_org->id
+      ? g_strdup(context->current_org->id)
+      : NULL;
+  task->load_cached = FALSE;
+  task->update_memory = update_memory;
+  task->release_refresh = TRUE;
+
+  if (!task->chat_id) {
+    g_free(task->chat_name);
+    g_free(task->org_id);
+    g_free(task);
+    return FALSE;
+  }
+
+  context->chat_refresh_in_flight = TRUE;
+  g_thread_new("fpv-chat-refresh", chat_history_thread, task);
+  return TRUE;
+}
+
+static gboolean chat_refresh_tick(gpointer data) {
+  AppContext* context = (AppContext*)data;
+  if (!context || context->closing) {
+    return G_SOURCE_REMOVE;
+  }
+  if (!context->running || !context->core) {
+    return G_SOURCE_CONTINUE;
+  }
+  if (context->chat_refresh_in_flight) {
+    return G_SOURCE_CONTINUE;
+  }
+
+  guint64 now_ms = (guint64)(g_get_real_time() / 1000ULL);
+
+  if (context->active_chat_id &&
+      now_ms - context->chat_refresh_last_active_ms >=
+          CHAT_REFRESH_ACTIVE_INTERVAL_MS) {
+    if (chat_refresh_schedule(
+            context,
+            context->active_chat_id,
+            context->active_chat_name,
+            TRUE)) {
+      context->chat_refresh_last_active_ms = now_ms;
+    }
+    return G_SOURCE_CONTINUE;
+  }
+
+  if (!context->chat_refresh_queue) {
+    chat_refresh_queue_rebuild(context);
+  }
+
+  if (context->chat_refresh_queue &&
+      context->chat_refresh_index >= context->chat_refresh_queue->len) {
+    if (context->chat_refresh_warmup) {
+      context->chat_refresh_warmup = FALSE;
+      context->chat_refresh_last_background_ms = now_ms;
+      context->chat_refresh_index = 0;
+      return G_SOURCE_CONTINUE;
+    }
+    chat_refresh_queue_rebuild(context);
+  }
+
+  if (context->chat_refresh_warmup) {
+    guint64 warmup_interval = chat_refresh_interval_ms(context, TRUE);
+    if (now_ms - context->chat_refresh_last_background_ms < warmup_interval) {
+      return G_SOURCE_CONTINUE;
+    }
+    const gchar* chat_id = chat_refresh_pick_next_non_active(context);
+    if (!chat_id) {
+      return G_SOURCE_CONTINUE;
+    }
+    const gchar* chat_name = chat_refresh_lookup_name(context, chat_id);
+    if (chat_refresh_schedule(context, chat_id, chat_name, FALSE)) {
+      context->chat_refresh_last_background_ms = now_ms;
+    }
+    if (context->chat_refresh_queue &&
+        context->chat_refresh_index >= context->chat_refresh_queue->len) {
+      context->chat_refresh_warmup = FALSE;
+      context->chat_refresh_index = 0;
+    }
+    return G_SOURCE_CONTINUE;
+  }
+
+  guint64 background_interval = chat_refresh_interval_ms(context, FALSE);
+  if (now_ms - context->chat_refresh_last_background_ms <
+      background_interval) {
+    return G_SOURCE_CONTINUE;
+  }
+
+  const gchar* chat_id = chat_refresh_pick_next_non_active(context);
+  if (!chat_id) {
+    return G_SOURCE_CONTINUE;
+  }
+  const gchar* chat_name = chat_refresh_lookup_name(context, chat_id);
+  if (chat_refresh_schedule(context, chat_id, chat_name, FALSE)) {
+    context->chat_refresh_last_background_ms = now_ms;
+  }
+  return G_SOURCE_CONTINUE;
+}
+
+void start_chat_refresh(AppContext* context) {
+  if (!context) {
+    return;
+  }
+  if (context->chat_refresh_id != 0) {
+    return;
+  }
+  context->chat_refresh_in_flight = FALSE;
+  context->chat_refresh_warmup = TRUE;
+  context->chat_refresh_index = 0;
+  context->chat_refresh_last_active_ms = 0;
+  context->chat_refresh_last_background_ms = 0;
+  chat_refresh_queue_rebuild(context);
+  context->chat_refresh_id = g_timeout_add(
+      CHAT_REFRESH_TICK_MS,
+      chat_refresh_tick,
+      context);
+}
+
+void stop_chat_refresh(AppContext* context) {
+  if (!context) {
+    return;
+  }
+  if (context->chat_refresh_id != 0) {
+    g_source_remove(context->chat_refresh_id);
+    context->chat_refresh_id = 0;
+  }
+  context->chat_refresh_in_flight = FALSE;
+  context->chat_refresh_warmup = FALSE;
+  context->chat_refresh_index = 0;
+  context->chat_refresh_last_active_ms = 0;
+  context->chat_refresh_last_background_ms = 0;
+  chat_refresh_queue_clear(context);
 }
 
 void on_chat_selected(
@@ -438,6 +744,8 @@ void on_chat_selected(
       ? g_strdup(context->current_org->id)
       : NULL;
   task->load_cached = load_cached;
+  task->update_memory = TRUE;
+  task->release_refresh = FALSE;
   g_thread_new("fpv-chat-history", chat_history_thread, task);
 }
 

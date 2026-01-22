@@ -263,6 +263,18 @@ static fpv_result_t fpv_funpay_account_fetch_lot_form(
     return result;
   }
 
+  bool html_has_secrets = response.body &&
+      strstr(response.body, "textarea-lot-secrets") != NULL;
+  bool html_has_auto_delivery = response.body &&
+      strstr(response.body, "auto_delivery") != NULL;
+  fpv_funpay_logf(
+      account,
+      FPV_LOG_INFO,
+      "Lot secrets fetch: status=%ld html_secrets=%d html_auto_delivery=%d",
+      response.status,
+      html_has_secrets ? 1 : 0,
+      html_has_auto_delivery ? 1 : 0);
+
   fpv_html_doc_t* doc = fpv_html_parse(response.body, response.body_size);
   if (!doc || !doc->doc) {
     fpv_funpay_http_response_clear(&response);
@@ -3949,7 +3961,7 @@ fpv_result_t fpv_funpay_account_set_lot_active(
   snprintf(
       url,
       sizeof(url),
-      "https://funpay.com/lots/offerEdit?offer=%" PRIu64,
+      "https://funpay.com/lots/offerEdit?offer=%" PRIu64 "&location=offer",
       lot_id);
   fpv_funpay_http_header_t headers[] = {
       fpv_funpay_header("accept", "*/*")};
@@ -4023,14 +4035,9 @@ fpv_result_t fpv_funpay_account_set_lot_active(
     fpv_free(header_text);
   }
 
-  fpv_funpay_form_t form;
-  memset(&form, 0, sizeof(form));
-  bool form_ok = true;
-  if (!fpv_funpay_form_set(&form, "active", "") ||
-      !fpv_funpay_form_set(&form, "deactivate_after_sale", "")) {
-    form_ok = false;
-  }
-
+  long response_status = response.status;
+  char* active_on_value = NULL;
+  char* active_off_value = NULL;
   fpv_html_node_list_t inputs = fpv_funpay_find_all_tag(root, "input");
   for (size_t i = 0; i < inputs.count; i++) {
     xmlNode* node = inputs.nodes[i];
@@ -4042,113 +4049,48 @@ fpv_result_t fpv_funpay_account_set_lot_active(
       fpv_free(name);
       continue;
     }
-    char* type = fpv_html_node_attr(node, "type");
-    if (type && strcmp(type, "checkbox") == 0) {
-      char* checked = fpv_html_node_attr(node, "checked");
-      if (checked) {
-        if (form_ok && !fpv_funpay_form_set(&form, name, "on")) {
-          form_ok = false;
-        }
-        fpv_free(checked);
-      }
-      fpv_free(type);
+    if (strcmp(name, "active") != 0) {
       fpv_free(name);
       continue;
     }
-    if (type && strcmp(type, "radio") == 0) {
-      char* checked = fpv_html_node_attr(node, "checked");
-      if (checked) {
-        char* value = fpv_html_node_attr(node, "value");
-        if (form_ok && !fpv_funpay_form_set(&form, name, value ? value : "")) {
-          form_ok = false;
-        }
-        fpv_free(value);
-        fpv_free(checked);
+    char* type = fpv_html_node_attr(node, "type");
+    char* value = fpv_html_node_attr(node, "value");
+    if (type && strcmp(type, "checkbox") == 0) {
+      if (!active_on_value) {
+        active_on_value = fpv_strdup(value && value[0] ? value : "on");
       }
-      fpv_free(type);
-      fpv_free(name);
-      continue;
+    } else if (!active_off_value) {
+      active_off_value = fpv_strdup(value ? value : "");
     }
     fpv_free(type);
-    if (strcmp(name, "active") == 0 ||
-        strcmp(name, "deactivate_after_sale") == 0) {
-      fpv_free(name);
-      continue;
-    }
-    char* value = fpv_html_node_attr(node, "value");
-    if (form_ok && !fpv_funpay_form_set(&form, name, value ? value : "")) {
-      form_ok = false;
-    }
     fpv_free(value);
     fpv_free(name);
   }
   fpv_html_node_list_destroy(&inputs);
 
-  fpv_html_node_list_t textareas = fpv_funpay_find_all_tag(root, "textarea");
-  for (size_t i = 0; i < textareas.count; i++) {
-    xmlNode* node = textareas.nodes[i];
-    if (!node) {
-      continue;
-    }
-    char* name = fpv_html_node_attr(node, "name");
-    if (!name || !name[0]) {
-      fpv_free(name);
-      continue;
-    }
-    char* value = fpv_html_node_text(node);
-    if (form_ok && !fpv_funpay_form_set(&form, name, value ? value : "")) {
+  fpv_funpay_form_t form;
+  memset(&form, 0, sizeof(form));
+  bool form_ok = fpv_funpay_form_parse_from_html(root, &form);
+  if (!form_ok && error && error->code == FPV_FUNPAY_OK) {
+    fpv_funpay_error_set(
+        error,
+        FPV_FUNPAY_ERR_PARSE,
+        "Failed to parse lot edit form",
+        url,
+        "GET",
+        response_status);
+  }
+  if (form_ok) {
+    const char* on_value =
+        (active_on_value && active_on_value[0]) ? active_on_value : "on";
+    const char* off_value = active_off_value ? active_off_value : "";
+    if (!fpv_funpay_form_set(&form, "active", active ? on_value : off_value)) {
       form_ok = false;
     }
-    fpv_free(value);
-    fpv_free(name);
   }
-  fpv_html_node_list_destroy(&textareas);
+  fpv_free(active_on_value);
+  fpv_free(active_off_value);
 
-  fpv_html_node_list_t selects = fpv_funpay_find_all_tag(root, "select");
-  for (size_t i = 0; i < selects.count; i++) {
-    xmlNode* node = selects.nodes[i];
-    if (!node) {
-      continue;
-    }
-    char* name = fpv_html_node_attr(node, "name");
-    if (!name || !name[0]) {
-      fpv_free(name);
-      continue;
-    }
-    char* selected_value = NULL;
-    for (xmlNode* child = node->children; child; child = child->next) {
-      if (child->type != XML_ELEMENT_NODE) {
-        continue;
-      }
-      if (!child->name ||
-          strcmp((const char*)child->name, "option") != 0) {
-        continue;
-      }
-      char* selected = fpv_html_node_attr(child, "selected");
-      if (selected) {
-        fpv_free(selected);
-        selected_value = fpv_html_node_attr(child, "value");
-        if (!selected_value) {
-          selected_value = fpv_html_node_text(child);
-        }
-        break;
-      }
-    }
-    if (selected_value) {
-      if (form_ok &&
-          !fpv_funpay_form_set(&form, name, selected_value)) {
-        form_ok = false;
-      }
-      fpv_free(selected_value);
-    }
-    fpv_free(name);
-  }
-  fpv_html_node_list_destroy(&selects);
-
-  if (form_ok &&
-      !fpv_funpay_form_set(&form, "active", active ? "on" : "")) {
-    form_ok = false;
-  }
   if (form_ok && !fpv_funpay_form_has_key(&form, "location")) {
     if (!fpv_funpay_form_set(&form, "location", "trade")) {
       form_ok = false;
@@ -4162,6 +4104,15 @@ fpv_result_t fpv_funpay_account_set_lot_active(
   }
 
   if (!form_ok) {
+    if (error && error->code == FPV_FUNPAY_OK) {
+      fpv_funpay_error_set(
+          error,
+          FPV_FUNPAY_ERR_REQUEST_FAILED,
+          "Failed to prepare lot update form",
+          url,
+          "GET",
+          response_status);
+    }
     fpv_funpay_form_clear(&form);
     fpv_funpay_http_response_clear(&response);
     fpv_html_destroy(doc);
@@ -4173,6 +4124,15 @@ fpv_result_t fpv_funpay_account_set_lot_active(
   fpv_funpay_http_response_clear(&response);
   fpv_html_destroy(doc);
   if (!form_body) {
+    if (error && error->code == FPV_FUNPAY_OK) {
+      fpv_funpay_error_set(
+          error,
+          FPV_FUNPAY_ERR_REQUEST_FAILED,
+          "Failed to encode lot update form",
+          url,
+          "GET",
+          response_status);
+    }
     return FPV_ERR_OUT_OF_MEMORY;
   }
 
@@ -4183,6 +4143,7 @@ fpv_result_t fpv_funpay_account_set_lot_active(
           "application/x-www-form-urlencoded; charset=UTF-8"),
       fpv_funpay_header("x-requested-with", "XMLHttpRequest")};
   fpv_funpay_http_response_t save_response;
+  memset(&save_response, 0, sizeof(save_response));
   result = fpv_funpay_account_request(
       account,
       "POST",
@@ -4196,6 +4157,339 @@ fpv_result_t fpv_funpay_account_set_lot_active(
       error);
   fpv_free(form_body);
   if (result != FPV_OK) {
+    if (error && error->code == FPV_FUNPAY_OK) {
+      fpv_funpay_error_set(
+          error,
+          FPV_FUNPAY_ERR_REQUEST_FAILED,
+          "Lot update request failed",
+          "lots/offerSave",
+          "POST",
+          save_response.status);
+    }
+    return result;
+  }
+
+  fpv_json_value_t* json = NULL;
+  fpv_json_error_t json_error;
+  if (fpv_json_parse(save_response.body, save_response.body_size, &json, &json_error) !=
+      FPV_OK) {
+    fpv_funpay_http_response_clear(&save_response);
+    fpv_funpay_logf(
+        account,
+        FPV_LOG_WARNING,
+        "Lot secrets update response parse failed (status=%ld).",
+        save_response.status);
+    fpv_funpay_error_set(
+        error,
+        FPV_FUNPAY_ERR_PARSE,
+        "Failed to parse lot save response",
+        "lots/offerSave",
+        "POST",
+        save_response.status);
+    return FPV_ERR_PARSE;
+  }
+
+  const fpv_json_value_t* error_val = fpv_json_object_get(json, "error");
+  const char* error_text = fpv_json_string(error_val);
+  if (error_text && error_text[0]) {
+    fpv_json_destroy(json);
+    fpv_funpay_http_response_clear(&save_response);
+    fpv_funpay_logf(
+        account,
+        FPV_LOG_WARNING,
+        "Lot secrets update failed: %s",
+        error_text);
+    fpv_funpay_error_set(
+        error,
+        FPV_FUNPAY_ERR_REQUEST_FAILED,
+        error_text,
+        "lots/offerSave",
+        "POST",
+        save_response.status);
+    return FPV_ERR_IO;
+  }
+
+  fpv_funpay_logf(account, FPV_LOG_INFO, "Lot secrets update ok.");
+  fpv_json_destroy(json);
+  fpv_funpay_http_response_clear(&save_response);
+  return FPV_OK;
+}
+
+fpv_result_t fpv_funpay_account_set_lot_secrets(
+    fpv_funpay_account_t* account,
+    uint64_t lot_id,
+    const char* secrets,
+    fpv_funpay_error_t* error) {
+  if (!account || !account->initiated) {
+    fpv_funpay_error_set(
+        error,
+        FPV_FUNPAY_ERR_ACCOUNT_NOT_INITIATED,
+        "Account is not initiated",
+        NULL,
+        NULL,
+        0);
+    return FPV_ERR_INVALID_STATE;
+  }
+  if (lot_id == 0) {
+    return FPV_ERR_INVALID_ARGUMENT;
+  }
+
+  size_t secrets_len = secrets ? strlen(secrets) : 0;
+  char preview[96];
+  size_t preview_len = 0;
+  if (secrets && secrets[0]) {
+    while (secrets[preview_len] &&
+           secrets[preview_len] != '\n' &&
+           preview_len < sizeof(preview) - 1) {
+      preview[preview_len] = secrets[preview_len];
+      preview_len++;
+    }
+  }
+  preview[preview_len] = '\0';
+
+  char url[160];
+  snprintf(
+      url,
+      sizeof(url),
+      "https://funpay.com/lots/offerEdit?offer=%" PRIu64 "&location=offer",
+      lot_id);
+  fpv_funpay_logf(
+      account,
+      FPV_LOG_INFO,
+      "Lot secrets update start: lot_id=%" PRIu64 " secrets_len=%zu preview=%s",
+      lot_id,
+      secrets_len,
+      preview);
+  fpv_funpay_http_header_t headers[] = {
+      fpv_funpay_header("accept", "*/*")};
+  fpv_funpay_http_response_t response;
+  fpv_result_t result = fpv_funpay_account_request(
+      account,
+      "GET",
+      url,
+      headers,
+      sizeof(headers) / sizeof(headers[0]),
+      NULL,
+      false,
+      true,
+      &response,
+      error);
+  if (result != FPV_OK) {
+    return result;
+  }
+
+  fpv_html_doc_t* doc = fpv_html_parse(response.body, response.body_size);
+  if (!doc || !doc->doc) {
+    fpv_funpay_http_response_clear(&response);
+    fpv_html_destroy(doc);
+    fpv_funpay_error_set(
+        error,
+        FPV_FUNPAY_ERR_PARSE,
+        "Failed to parse HTML",
+        url,
+        "GET",
+        response.status);
+    return FPV_ERR_PARSE;
+  }
+
+  xmlNode* root = xmlDocGetRootElement(doc->doc);
+  xmlNode* username_node =
+      fpv_html_find_first_by_class(root, "div", "user-link-name");
+  if (!username_node) {
+    fpv_funpay_http_response_clear(&response);
+    fpv_html_destroy(doc);
+    fpv_funpay_error_set(
+        error,
+        FPV_FUNPAY_ERR_UNAUTHORIZED,
+        "Unauthorized",
+        url,
+        "GET",
+        response.status);
+    return FPV_ERR_INVALID_STATE;
+  }
+
+  xmlNode* header_node =
+      fpv_html_find_first_by_class(root, "h1", "page-header");
+  if (header_node) {
+    char* header_text = fpv_html_node_text(header_node);
+    if (header_text &&
+        strcmp(header_text,
+               "\xD0\x9F\xD1\x80\xD0\xB5\xD0\xB4\xD0\xBB\xD0\xBE\xD0\xB6"
+               "\xD0\xB5\xD0\xBD\xD0\xB8\xD0\xB5 \xD0\xBD\xD0\xB5 "
+               "\xD0\xBD\xD0\xB0\xD0\xB9\xD0\xB4\xD0\xB5\xD0\xBD\xD0\xBE") == 0) {
+      fpv_free(header_text);
+      fpv_funpay_http_response_clear(&response);
+      fpv_html_destroy(doc);
+      fpv_funpay_error_set(
+          error,
+          FPV_FUNPAY_ERR_NOT_FOUND,
+          "Lot not found",
+          url,
+          "GET",
+          response.status);
+      return FPV_ERR_NOT_FOUND;
+    }
+    fpv_free(header_text);
+  }
+
+  char* auto_delivery_on = NULL;
+  bool auto_delivery_checked = false;
+  fpv_html_node_list_t inputs = fpv_funpay_find_all_tag(root, "input");
+  for (size_t i = 0; i < inputs.count; i++) {
+    xmlNode* node = inputs.nodes[i];
+    if (!node) {
+      continue;
+    }
+    char* name = fpv_html_node_attr(node, "name");
+    if (!name || strcmp(name, "auto_delivery") != 0) {
+      fpv_free(name);
+      continue;
+    }
+    char* type = fpv_html_node_attr(node, "type");
+    if (!type || strcmp(type, "checkbox") != 0) {
+      fpv_free(type);
+      fpv_free(name);
+      continue;
+    }
+    char* checked = fpv_html_node_attr(node, "checked");
+    auto_delivery_checked = checked != NULL;
+    fpv_free(checked);
+    char* value = fpv_html_node_attr(node, "value");
+    if (value && value[0]) {
+      auto_delivery_on = fpv_strdup(value);
+    } else {
+      auto_delivery_on = fpv_strdup("on");
+    }
+    fpv_free(value);
+    fpv_free(type);
+    fpv_free(name);
+    break;
+  }
+  fpv_html_node_list_destroy(&inputs);
+
+  long response_status = response.status;
+  fpv_funpay_form_t form;
+  memset(&form, 0, sizeof(form));
+  bool form_ok = fpv_funpay_form_parse_from_html(root, &form);
+  if (!form_ok && error && error->code == FPV_FUNPAY_OK) {
+    fpv_funpay_error_set(
+        error,
+        FPV_FUNPAY_ERR_PARSE,
+        "Failed to parse lot edit form",
+        url,
+        "GET",
+        response_status);
+  }
+  bool form_has_secrets =
+      form_ok && fpv_funpay_form_has_key(&form, "secrets");
+  bool form_has_auto_delivery =
+      form_ok && fpv_funpay_form_has_key(&form, "auto_delivery");
+  const char* form_location =
+      form_ok ? fpv_funpay_form_get(&form, "location") : NULL;
+  fpv_funpay_logf(
+      account,
+      FPV_LOG_INFO,
+      "Lot secrets form: ok=%d secrets=%d auto_delivery=%d checked=%d on_value=%s location=%s",
+      form_ok ? 1 : 0,
+      form_has_secrets ? 1 : 0,
+      form_has_auto_delivery ? 1 : 0,
+      auto_delivery_checked ? 1 : 0,
+      auto_delivery_on ? auto_delivery_on : "",
+      form_location ? form_location : "");
+  if (!form_has_secrets) {
+    fpv_funpay_logf(
+        account,
+        FPV_LOG_WARNING,
+        "Lot secrets form missing textarea; cannot update secrets.");
+    fpv_funpay_log_html_snippet(account, response.body);
+  }
+  if (form_ok &&
+      !fpv_funpay_form_set(&form, "secrets", secrets ? secrets : "")) {
+    form_ok = false;
+  }
+  const char* auto_delivery_value =
+      auto_delivery_on && auto_delivery_on[0] ? auto_delivery_on : "on";
+  if (form_ok &&
+      !fpv_funpay_form_set(&form, "auto_delivery", auto_delivery_value)) {
+    form_ok = false;
+  }
+  if (form_ok && !fpv_funpay_form_has_key(&form, "location")) {
+    if (!fpv_funpay_form_set(&form, "location", "offer")) {
+      form_ok = false;
+    }
+  }
+  if (account->csrf_token && !fpv_funpay_form_has_key(&form, "csrf_token")) {
+    if (form_ok &&
+        !fpv_funpay_form_set(&form, "csrf_token", account->csrf_token)) {
+      form_ok = false;
+    }
+  }
+
+  if (!form_ok) {
+    if (error && error->code == FPV_FUNPAY_OK) {
+      fpv_funpay_error_set(
+          error,
+          FPV_FUNPAY_ERR_REQUEST_FAILED,
+          "Failed to prepare lot secrets form",
+          url,
+          "GET",
+          response_status);
+    }
+    fpv_free(auto_delivery_on);
+    fpv_funpay_form_clear(&form);
+    fpv_funpay_http_response_clear(&response);
+    fpv_html_destroy(doc);
+    return FPV_ERR_OUT_OF_MEMORY;
+  }
+
+  char* form_body = fpv_funpay_form_encode_fields(&form);
+  fpv_funpay_form_clear(&form);
+  fpv_funpay_http_response_clear(&response);
+  fpv_html_destroy(doc);
+  fpv_free(auto_delivery_on);
+  if (!form_body) {
+    if (error && error->code == FPV_FUNPAY_OK) {
+      fpv_funpay_error_set(
+          error,
+          FPV_FUNPAY_ERR_REQUEST_FAILED,
+          "Failed to encode lot secrets form",
+          url,
+          "GET",
+          response_status);
+    }
+    return FPV_ERR_OUT_OF_MEMORY;
+  }
+
+  fpv_funpay_http_header_t save_headers[] = {
+      fpv_funpay_header("accept", "*/*"),
+      fpv_funpay_header(
+          "content-type",
+          "application/x-www-form-urlencoded; charset=UTF-8"),
+      fpv_funpay_header("x-requested-with", "XMLHttpRequest")};
+  fpv_funpay_http_response_t save_response;
+  memset(&save_response, 0, sizeof(save_response));
+  result = fpv_funpay_account_request(
+      account,
+      "POST",
+      "lots/offerSave",
+      save_headers,
+      sizeof(save_headers) / sizeof(save_headers[0]),
+      form_body,
+      false,
+      true,
+      &save_response,
+      error);
+  fpv_free(form_body);
+  if (result != FPV_OK) {
+    if (error && error->code == FPV_FUNPAY_OK) {
+      fpv_funpay_error_set(
+          error,
+          FPV_FUNPAY_ERR_REQUEST_FAILED,
+          "Lot secrets update request failed",
+          "lots/offerSave",
+          "POST",
+          save_response.status);
+    }
     return result;
   }
 

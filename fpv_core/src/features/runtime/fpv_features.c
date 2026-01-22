@@ -30,6 +30,10 @@ fpv_result_t fpv_features_init(
     fpv_features_destroy(state);
     return FPV_ERR_OUT_OF_MEMORY;
   }
+  if (!fpv_mutex_init(&state->timed_mutex)) {
+    fpv_features_destroy(state);
+    return FPV_ERR_OUT_OF_MEMORY;
+  }
 
   state->logger = logger;
   fpv_result_t apply_result =
@@ -125,6 +129,13 @@ void fpv_features_destroy(fpv_feature_state_t* state) {
   fpv_free(state->pending_lot_update_tag);
   fpv_mutex_destroy(&state->config_mutex);
   fpv_mutex_destroy(&state->lot_update_mutex);
+  fpv_mutex_destroy(&state->timed_mutex);
+  if (state->timed_entries) {
+    for (size_t i = 0; i < state->timed_count; i++) {
+      fpv_free(state->timed_entries[i].response);
+    }
+    fpv_free(state->timed_entries);
+  }
   free(state);
 }
 
@@ -265,6 +276,9 @@ fpv_result_t fpv_features_reload_auto_delivery(
   fpv_auto_delivery_config_destroy(&state->auto_delivery);
   state->auto_delivery = next;
   fpv_features_config_unlock(state);
+  fpv_features_queue_timed_sync(state);
+  fpv_features_queue_lot_secrets_sync(state);
+  fpv_features_queue_lot_update(state, NULL);
   return FPV_OK;
 }
 
@@ -305,6 +319,8 @@ void fpv_features_attach(
   state->scheduler = scheduler;
   state->logger = logger;
   state->bus = bus;
+  fpv_features_queue_timed_sync(state);
+  fpv_features_queue_lot_secrets_sync(state);
   if (state->telegram) {
     fpv_telegram_service_attach_account(state->telegram, account);
     fpv_telegram_service_attach_runner(state->telegram, runner);

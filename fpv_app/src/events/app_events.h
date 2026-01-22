@@ -11,6 +11,8 @@ void update_status(
 gboolean poll_events(gpointer user_data);
 void start_core(GtkButton* button, gpointer user_data);
 void stop_core(GtkButton* button, gpointer user_data);
+void start_chat_refresh(AppContext* context);
+void stop_chat_refresh(AppContext* context);
 
 void on_chat_selected(GtkListBox* box, GtkListBoxRow* row, gpointer user_data);
 void on_send_message(GtkButton* button, gpointer user_data);
